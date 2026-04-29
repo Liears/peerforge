@@ -107,7 +107,7 @@ python3 agents-bus/bus.py run-task wire-real-clis --root agents-bus --config age
 Limit a run to the peers that are currently healthy:
 
 ```bash
-python3 agents-bus/bus.py run --config agents-bus/config.json --agents codex,hermes,openclaw --task "Implement and verify a small fix." --rounds 2
+python3 agents-bus/bus.py run --config agents-bus/config.json --ready-only --task "Implement and verify a small fix." --rounds 2
 ```
 
 Each task can capture:
@@ -120,6 +120,7 @@ Check which peers are actually ready before dispatch:
 
 ```bash
 python3 agents-bus/bus.py check --config agents-bus/config.json
+python3 agents-bus/bus.py ready --config agents-bus/config.json
 ```
 
 Bootstrap repo-local runtime state from your existing user-level installs:
@@ -131,7 +132,7 @@ python3 agents-bus/bus.py bootstrap --config agents-bus/config.json --mode copy
 Current bootstrap behavior:
 
 - `codex`: copies `auth.json` and `config.toml`
-- `claude`: copies `settings.json`
+- `claude`: copies and sanitizes `settings.json` to remove inherited `ANTHROPIC_*` proxy overrides
 - `hermes`: copies `config.yaml` and `.env`
 - `openclaw`: copies `openclaw.json`, `agents/`, `identity/`, and `devices/`, then rewrites workspace to the current project
 
@@ -163,6 +164,6 @@ In the current machine state, bootstrap + smoke tests confirmed:
 - `codex` can return protocol JSON from repo-local state
 - `hermes` can return protocol JSON from repo-local state
 - `openclaw` can return protocol JSON from repo-local state
-- `claude` still times out in repo-local mode and needs more tuning
+- `claude` is still not usable in repo-local mode on this machine; bootstrap now makes it fail fast instead of hanging on inherited proxy settings
 
 The bus is written to tolerate those failures and keep the other peers talking.

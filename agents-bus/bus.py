@@ -85,6 +85,16 @@ def filtered_config(config: dict[str, Any], only_agents: list[str] | None) -> di
     return clone
 
 
+def healthy_agent_names(config: dict[str, Any]) -> list[str]:
+    bus = Bus(config)
+    ready: list[str] = []
+    for adapter in bus.adapters:
+        result = adapter.probe()
+        if result.get("status") == "ready":
+            ready.append(adapter.name)
+    return ready
+
+
 def expand_template(value: str, variables: dict[str, str]) -> str:
     for key, item in variables.items():
         value = value.replace("{" + key + "}", item)
@@ -111,6 +121,18 @@ def copy_or_symlink(src: Path, dst: Path, mode: str) -> None:
         shutil.copytree(src, dst)
     else:
         shutil.copy2(src, dst)
+
+
+def sanitize_claude_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(settings)
+    env = dict(cleaned.get("env", {}))
+    cleaned["env"] = {
+        key: value
+        for key, value in env.items()
+        if not str(key).startswith("ANTHROPIC_") and str(key) != "TAVILY_API_KEY"
+    }
+    cleaned.pop("statusLine", None)
+    return cleaned
 
 
 def build_agent_prompt(
@@ -282,7 +304,7 @@ class AgentAdapter:
                 env=self.env(),
                 text=True,
                 capture_output=True,
-                timeout=min(self.timeout_seconds, 15),
+                timeout=self.timeout_seconds,
             )
         except subprocess.TimeoutExpired as exc:
             return {
@@ -616,8 +638,21 @@ def bootstrap_agent_runtime(adapter: AgentAdapter, mode: str) -> list[str]:
 
     if adapter.type == "claude":
         cfg = runtime / "config"
-        copy_or_symlink(Path("/root/.claude/settings.json"), cfg / "settings.json", mode)
-        ops.append("claude settings.json")
+        src = Path("/root/.claude/settings.json")
+        dst = cfg / "settings.json"
+        copy_or_symlink(src, dst, mode)
+        if dst.exists() and not dst.is_symlink():
+            try:
+                settings = json.loads(dst.read_text(encoding="utf-8"))
+                dst.write_text(
+                    json.dumps(sanitize_claude_settings(settings), ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                ops.append("claude settings.json sanitized")
+            except json.JSONDecodeError:
+                ops.append("claude settings.json copied")
+        else:
+            ops.append("claude settings.json")
         return ops
 
     if adapter.type == "hermes":
@@ -735,7 +770,11 @@ def cmd_task_update(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
+    base_config = read_json(Path(args.config))
+    selected = parse_agent_filter(args.agents)
+    if args.ready_only:
+        selected = healthy_agent_names(filtered_config(base_config, selected))
+    config = filtered_config(base_config, selected)
     bus = Bus(config)
     log_path = bus.run(task=args.task, rounds=args.rounds, title=args.title)
     print(str(log_path))
@@ -744,7 +783,11 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_run_task(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
+    base_config = read_json(Path(args.config))
+    selected = parse_agent_filter(args.agents)
+    if args.ready_only:
+        selected = healthy_agent_names(filtered_config(base_config, selected))
+    config = filtered_config(base_config, selected)
     board = read_board(root)
     for row in board.get("tasks", []):
         if row["id"] != args.task_id:
@@ -771,6 +814,12 @@ def cmd_check(args: argparse.Namespace) -> int:
         result["type"] = adapter.type
         rows.append(result)
     print(json.dumps(rows, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_ready(args: argparse.Namespace) -> int:
+    config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
+    print(json.dumps(healthy_agent_names(config), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -807,6 +856,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--title", help="Optional human-readable title")
     run_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
     run_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
+    run_parser.add_argument("--ready-only", action="store_true", help="Automatically restrict the run to agents whose probes return ready")
     run_parser.set_defaults(func=cmd_run)
 
     task_add_parser = sub.add_parser("task-add", help="Add a task to the board")
@@ -836,12 +886,18 @@ def build_parser() -> argparse.ArgumentParser:
     run_task_parser.add_argument("--config", required=True, help="Path to config JSON")
     run_task_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
     run_task_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
+    run_task_parser.add_argument("--ready-only", action="store_true", help="Automatically restrict the run to agents whose probes return ready")
     run_task_parser.set_defaults(func=cmd_run_task)
 
     check_parser = sub.add_parser("check", help="Run readiness probes for configured agents")
     check_parser.add_argument("--config", required=True, help="Path to config JSON")
     check_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
     check_parser.set_defaults(func=cmd_check)
+
+    ready_parser = sub.add_parser("ready", help="List agent names whose probes currently return ready")
+    ready_parser.add_argument("--config", required=True, help="Path to config JSON")
+    ready_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
+    ready_parser.set_defaults(func=cmd_ready)
 
     bootstrap_parser = sub.add_parser("bootstrap", help="Populate project runtime dirs from global agent state")
     bootstrap_parser.add_argument("--config", required=True, help="Path to config JSON")
