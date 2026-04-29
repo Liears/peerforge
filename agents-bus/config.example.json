@@ -1,0 +1,50 @@
+{
+  "workdir": "/mnt/d/Work/01-code/muti_team",
+  "session_dir": "/mnt/d/Work/01-code/muti_team/agents-bus/sessions",
+  "runtime_dir": "/mnt/d/Work/01-code/muti_team/.agent-state",
+  "timeout_seconds": 45,
+  "history_limit": 16,
+  "agents": [
+    {
+      "name": "codex",
+      "type": "codex",
+      "enabled": true,
+      "env": {
+        "HOME": "{agent_runtime_dir}/home",
+        "XDG_CONFIG_HOME": "{agent_runtime_dir}/xdg/config",
+        "XDG_STATE_HOME": "{agent_runtime_dir}/xdg/state",
+        "XDG_CACHE_HOME": "{agent_runtime_dir}/xdg/cache"
+      }
+    },
+    {
+      "name": "claude",
+      "type": "claude",
+      "enabled": true,
+      "env": {
+        "CLAUDE_CONFIG_DIR": "{agent_runtime_dir}/config",
+        "CLAUDE_CODE_DEBUG_LOGS_DIR": "{agent_runtime_dir}/logs",
+        "CLAUDE_CODE_TMPDIR": "{agent_runtime_dir}/tmp",
+        "CLAUDE_TMPDIR": "{agent_runtime_dir}/tmp"
+      }
+    },
+    {
+      "name": "hermes",
+      "type": "hermes",
+      "enabled": true,
+      "env": {
+        "HOME": "{agent_runtime_dir}/home",
+        "HERMES_ACCEPT_HOOKS": "1"
+      }
+    },
+    {
+      "name": "openclaw",
+      "type": "openclaw",
+      "enabled": true,
+      "agent_id": "replace-me",
+      "env": {
+        "OPENCLAW_STATE_DIR": "{agent_runtime_dir}/state",
+        "OPENCLAW_CONFIG_PATH": "{agent_runtime_dir}/config.json"
+      }
+    }
+  ]
+}

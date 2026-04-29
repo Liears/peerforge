@@ -1,0 +1,8 @@
+.agent-state/
+.codex
+agents-bus/runtime/
+agents-bus/sessions/
+agents-bus/board.json
+agents-bus/config.json
+agents-bus/__pycache__/
+*.pyc

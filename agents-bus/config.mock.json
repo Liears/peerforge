@@ -1,0 +1,31 @@
+{
+  "workdir": "/mnt/d/Work/01-code/muti_team",
+  "session_dir": "/mnt/d/Work/01-code/muti_team/agents-bus/sessions",
+  "runtime_dir": "/mnt/d/Work/01-code/muti_team/.agent-state",
+  "timeout_seconds": 10,
+  "history_limit": 8,
+  "agents": [
+    {
+      "name": "alpha",
+      "type": "command",
+      "enabled": true,
+      "command": [
+        "python3",
+        "/mnt/d/Work/01-code/muti_team/agents-bus/mock_peer.py",
+        "alpha",
+        "{prompt}"
+      ]
+    },
+    {
+      "name": "beta",
+      "type": "command",
+      "enabled": true,
+      "command": [
+        "python3",
+        "/mnt/d/Work/01-code/muti_team/agents-bus/mock_peer.py",
+        "beta",
+        "{prompt}"
+      ]
+    }
+  ]
+}

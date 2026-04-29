@@ -1,0 +1,24 @@
+{
+  "tasks": [
+    {
+      "id": "wire-real-clis",
+      "title": "Wire real CLI agents into workspace state",
+      "description": "Verify codex, claude, hermes, and openclaw can run with per-project state directories and update config.json accordingly.",
+      "status": "todo",
+      "owner": "pm",
+      "created_at": "2026-04-29T00:00:00+00:00",
+      "depends_on": []
+    },
+    {
+      "id": "agent-task-flow",
+      "title": "Establish PM task flow",
+      "description": "Use board.json plus run-task to delegate concrete development work and keep transcripts attached to tasks.",
+      "status": "todo",
+      "owner": "pm",
+      "created_at": "2026-04-29T00:00:00+00:00",
+      "depends_on": [
+        "wire-real-clis"
+      ]
+    }
+  ]
+}
