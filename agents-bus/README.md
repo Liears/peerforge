@@ -96,6 +96,7 @@ Create and inspect tasks:
 ```bash
 python3 agents-bus/bus.py task-add --root agents-bus --title "Implement adapter retry policy" --description "Decide retry conditions and code the runner changes."
 python3 agents-bus/bus.py task-list --root agents-bus
+python3 agents-bus/bus.py task-next --root agents-bus
 ```
 
 Run one task through the agent group:
@@ -108,6 +109,7 @@ Limit a run to the peers that are currently healthy:
 
 ```bash
 python3 agents-bus/bus.py run --config agents-bus/config.json --ready-only --task "Implement and verify a small fix." --rounds 2
+python3 agents-bus/bus.py run-ready --config agents-bus/config.json --bootstrap --task "Implement and verify a small fix." --rounds 2
 ```
 
 Each task can capture:
@@ -115,6 +117,10 @@ Each task can capture:
 - `last_run_at`
 - `last_transcript`
 - `status`
+
+Current constraint:
+
+- treat `board.json` updates as single-writer operations; do not run multiple `task-add` or `task-update` commands in parallel
 
 Check which peers are actually ready before dispatch:
 

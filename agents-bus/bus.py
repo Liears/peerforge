@@ -345,6 +345,7 @@ class AgentAdapter:
 
     def build_argv(self, prompt: str) -> list[str]:
         variables = self.template_vars(prompt)
+        transient_session = f"bus-{self.name}-{uuid.uuid4().hex[:12]}"
 
         if self.type == "codex":
             return [
@@ -387,6 +388,8 @@ class AgentAdapter:
                 "--local",
                 "--agent",
                 str(agent_id),
+                "--session-id",
+                transient_session,
                 "--thinking",
                 "off",
                 "--message",
@@ -423,7 +426,20 @@ class AgentAdapter:
         if self.type == "openclaw":
             agent_id = self.spec.get("agent_id")
             if agent_id:
-                return ["openclaw", "agent", "--local", "--agent", str(agent_id), "--message", "ping", "--json"]
+                return [
+                    "openclaw",
+                    "agent",
+                    "--local",
+                    "--agent",
+                    str(agent_id),
+                    "--session-id",
+                    f"probe-{uuid.uuid4().hex[:12]}",
+                    "--thinking",
+                    "off",
+                    "--message",
+                    'reply exactly {"status":"done","summary":"ok","messages":[]}',
+                    "--json",
+                ]
             return ["openclaw", "agents", "list", "--json"]
         if self.type == "command":
             return self.build_argv('{"status":"done","summary":"probe","messages":[]}')
@@ -753,6 +769,20 @@ def cmd_task_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_task_next(args: argparse.Namespace) -> int:
+    board = read_board(Path(args.root).resolve())
+    rows = board.get("tasks", [])
+    pending = [row for row in rows if row.get("status") in {"todo", "pending"}]
+    if args.owner:
+        pending = [row for row in pending if row.get("owner") == args.owner]
+    pending.sort(key=lambda row: row.get("created_at", ""))
+    if not pending:
+        print("null")
+        return 0
+    print(json.dumps(pending[0], ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_task_update(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     board = read_board(root)
@@ -823,6 +853,22 @@ def cmd_ready(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run_ready(args: argparse.Namespace) -> int:
+    base_config = read_json(Path(args.config))
+    if args.bootstrap:
+        bus = Bus(filtered_config(base_config, parse_agent_filter(args.agents)))
+        for adapter in bus.adapters:
+            bootstrap_agent_runtime(adapter, args.bootstrap_mode)
+    selected = healthy_agent_names(filtered_config(base_config, parse_agent_filter(args.agents)))
+    if not selected:
+        raise SystemExit("no ready agents available")
+    config = filtered_config(base_config, selected)
+    bus = Bus(config)
+    log_path = bus.run(task=args.task, rounds=args.rounds, title=args.title)
+    print(json.dumps({"agents": selected, "transcript": str(log_path)}, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_bootstrap(args: argparse.Namespace) -> int:
     config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
     bus = Bus(config)
@@ -873,6 +919,11 @@ def build_parser() -> argparse.ArgumentParser:
     task_list_parser.add_argument("--status", help="Optional status filter")
     task_list_parser.set_defaults(func=cmd_task_list)
 
+    task_next_parser = sub.add_parser("task-next", help="Show the next pending task from the board")
+    task_next_parser.add_argument("--root", default="agents-bus", help="Project root directory")
+    task_next_parser.add_argument("--owner", help="Optional owner filter")
+    task_next_parser.set_defaults(func=cmd_task_next)
+
     task_update_parser = sub.add_parser("task-update", help="Update a task in the board")
     task_update_parser.add_argument("task_id", help="Task id")
     task_update_parser.add_argument("--root", default="agents-bus", help="Project root directory")
@@ -904,6 +955,16 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--mode", choices=["copy", "symlink"], default="copy", help="How to materialize inherited state")
     bootstrap_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
     bootstrap_parser.set_defaults(func=cmd_bootstrap)
+
+    run_ready_parser = sub.add_parser("run-ready", help="Bootstrap if requested, auto-pick ready agents, and run a task")
+    run_ready_parser.add_argument("--config", required=True, help="Path to config JSON")
+    run_ready_parser.add_argument("--task", required=True, help="Shared task for the agents")
+    run_ready_parser.add_argument("--title", help="Optional human-readable title")
+    run_ready_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
+    run_ready_parser.add_argument("--agents", help="Comma-separated subset of agent names to consider")
+    run_ready_parser.add_argument("--bootstrap", action="store_true", help="Refresh repo-local runtime state before choosing ready agents")
+    run_ready_parser.add_argument("--bootstrap-mode", choices=["copy", "symlink"], default="copy", help="Bootstrap materialization mode")
+    run_ready_parser.set_defaults(func=cmd_run_ready)
 
     return parser
 
