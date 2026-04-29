@@ -1,5 +1,12 @@
 .agent-state/
 .codex
+.openclaw/
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
 agents-bus/runtime/
 agents-bus/sessions/
 agents-bus/board.json

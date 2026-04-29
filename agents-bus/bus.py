@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import argparse
-import json
 import os
+import json
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -68,10 +69,48 @@ def normalize_slug(text: str) -> str:
     return value or "task"
 
 
+def parse_agent_filter(raw: str | None) -> list[str] | None:
+    if not raw:
+        return None
+    names = [part.strip() for part in raw.split(",") if part.strip()]
+    return names or None
+
+
+def filtered_config(config: dict[str, Any], only_agents: list[str] | None) -> dict[str, Any]:
+    if not only_agents:
+        return config
+    allowed = set(only_agents)
+    clone = dict(config)
+    clone["agents"] = [agent for agent in config["agents"] if agent.get("name") in allowed]
+    return clone
+
+
 def expand_template(value: str, variables: dict[str, str]) -> str:
     for key, item in variables.items():
         value = value.replace("{" + key + "}", item)
     return value
+
+
+def ensure_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def copy_or_symlink(src: Path, dst: Path, mode: str) -> None:
+    if not src.exists():
+        return
+    ensure_parent(dst)
+    if dst.exists() or dst.is_symlink():
+        if dst.is_dir() and not dst.is_symlink():
+            shutil.rmtree(dst)
+        else:
+            dst.unlink()
+    if mode == "symlink":
+        os.symlink(src, dst, target_is_directory=src.is_dir())
+        return
+    if src.is_dir():
+        shutil.copytree(src, dst)
+    else:
+        shutil.copy2(src, dst)
 
 
 def build_agent_prompt(
@@ -148,7 +187,7 @@ class AgentAdapter:
         self.type = spec["type"]
         self.workdir = workdir
         self.runtime_root = runtime_root
-        self.timeout_seconds = timeout_seconds
+        self.timeout_seconds = int(spec.get("timeout_seconds", timeout_seconds))
         self.agent_runtime_dir = (runtime_root / self.name).resolve()
         self.agent_runtime_dir.mkdir(parents=True, exist_ok=True)
 
@@ -326,6 +365,8 @@ class AgentAdapter:
                 "--local",
                 "--agent",
                 str(agent_id),
+                "--thinking",
+                "off",
                 "--message",
                 prompt,
                 "--json",
@@ -341,7 +382,18 @@ class AgentAdapter:
 
     def build_probe_argv(self) -> list[str]:
         if self.type == "codex":
-            return ["codex", "--version"]
+            return [
+                "codex",
+                "exec",
+                "--skip-git-repo-check",
+                "--sandbox",
+                "workspace-write",
+                "--json",
+                "--cd",
+                str(self.workdir),
+                "--ephemeral",
+                'reply exactly {"status":"done","summary":"ok","messages":[]}',
+            ]
         if self.type == "claude":
             return ["claude", "-p", "--output-format", "json", "--no-session-persistence", "ping"]
         if self.type == "hermes":
@@ -360,6 +412,8 @@ class AgentAdapter:
             return self._parse_codex_jsonl(stdout)
         if self.type == "claude":
             return self._parse_claude_json(stdout)
+        if self.type == "openclaw":
+            return self._parse_openclaw_json(stdout)
         return parse_json_block(stdout)
 
     def _parse_codex_jsonl(self, stdout: str) -> dict[str, Any] | None:
@@ -375,6 +429,10 @@ class AgentAdapter:
 
             if not isinstance(row, dict):
                 continue
+
+            item = row.get("item")
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                last_text = item["text"]
 
             msg = row.get("msg") or row.get("message")
             if isinstance(msg, dict):
@@ -398,6 +456,23 @@ class AgentAdapter:
                 nested = parse_json_block(obj[key])
                 if nested is not None:
                     return nested
+        return obj if "messages" in obj else None
+
+    def _parse_openclaw_json(self, stdout: str) -> dict[str, Any] | None:
+        obj = parse_json_block(stdout)
+        if not isinstance(obj, dict):
+            return None
+        payloads = obj.get("payloads")
+        if isinstance(payloads, list):
+            for payload in payloads:
+                if isinstance(payload, dict) and isinstance(payload.get("text"), str):
+                    nested = parse_json_block(payload["text"])
+                    if nested is not None:
+                        return nested
+        if isinstance(obj.get("finalAssistantVisibleText"), str):
+            nested = parse_json_block(obj["finalAssistantVisibleText"])
+            if nested is not None:
+                return nested
         return obj if "messages" in obj else None
 
 
@@ -526,6 +601,57 @@ class Bus:
         return False
 
 
+def bootstrap_agent_runtime(adapter: AgentAdapter, mode: str) -> list[str]:
+    ops: list[str] = []
+    runtime = adapter.agent_runtime_dir
+
+    if adapter.type == "codex":
+        home = runtime / "home"
+        copy_or_symlink(Path("/root/.codex/auth.json"), home / ".codex" / "auth.json", mode)
+        ops.append("codex auth.json")
+        if Path("/root/.codex/config.toml").exists():
+            copy_or_symlink(Path("/root/.codex/config.toml"), home / ".codex" / "config.toml", mode)
+            ops.append("codex config.toml")
+        return ops
+
+    if adapter.type == "claude":
+        cfg = runtime / "config"
+        copy_or_symlink(Path("/root/.claude/settings.json"), cfg / "settings.json", mode)
+        ops.append("claude settings.json")
+        return ops
+
+    if adapter.type == "hermes":
+        home = runtime / "home"
+        copy_or_symlink(Path("/root/.hermes/config.yaml"), home / ".hermes" / "config.yaml", mode)
+        ops.append("hermes config.yaml")
+        if Path("/root/.hermes/.env").exists():
+            copy_or_symlink(Path("/root/.hermes/.env"), home / ".hermes" / ".env", mode)
+            ops.append("hermes .env")
+        return ops
+
+    if adapter.type == "openclaw":
+        config_path = runtime / "config.json"
+        state_dir = runtime / "state"
+        copy_or_symlink(Path("/root/.openclaw/openclaw.json"), config_path, mode)
+        ops.append("openclaw openclaw.json")
+        for name in ("agents", "identity", "devices"):
+            src = Path("/root/.openclaw") / name
+            if src.exists():
+                copy_or_symlink(src, state_dir / name, mode)
+                ops.append(f"openclaw {name}/")
+        if config_path.exists():
+            try:
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                config.setdefault("agents", {}).setdefault("defaults", {})["workspace"] = str(adapter.workdir)
+                config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                ops.append("openclaw workspace rewritten")
+            except json.JSONDecodeError:
+                pass
+        return ops
+
+    return ops
+
+
 def board_path(root: Path) -> Path:
     return root / "board.json"
 
@@ -609,7 +735,7 @@ def cmd_task_update(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    config = read_json(Path(args.config))
+    config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
     bus = Bus(config)
     log_path = bus.run(task=args.task, rounds=args.rounds, title=args.title)
     print(str(log_path))
@@ -618,7 +744,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_run_task(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    config = read_json(Path(args.config))
+    config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
     board = read_board(root)
     for row in board.get("tasks", []):
         if row["id"] != args.task_id:
@@ -636,7 +762,7 @@ def cmd_run_task(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    config = read_json(Path(args.config))
+    config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
     bus = Bus(config)
     rows = []
     for adapter in bus.adapters:
@@ -645,6 +771,25 @@ def cmd_check(args: argparse.Namespace) -> int:
         result["type"] = adapter.type
         rows.append(result)
     print(json.dumps(rows, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_bootstrap(args: argparse.Namespace) -> int:
+    config = filtered_config(read_json(Path(args.config)), parse_agent_filter(args.agents))
+    bus = Bus(config)
+    results = []
+    for adapter in bus.adapters:
+        ops = bootstrap_agent_runtime(adapter, args.mode)
+        results.append(
+            {
+                "name": adapter.name,
+                "type": adapter.type,
+                "runtime_dir": str(adapter.agent_runtime_dir),
+                "mode": args.mode,
+                "copied": ops,
+            }
+        )
+    print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -661,6 +806,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--task", required=True, help="Shared task for the agents")
     run_parser.add_argument("--title", help="Optional human-readable title")
     run_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
+    run_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
     run_parser.set_defaults(func=cmd_run)
 
     task_add_parser = sub.add_parser("task-add", help="Add a task to the board")
@@ -689,11 +835,19 @@ def build_parser() -> argparse.ArgumentParser:
     run_task_parser.add_argument("--root", default="agents-bus", help="Project root directory")
     run_task_parser.add_argument("--config", required=True, help="Path to config JSON")
     run_task_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
+    run_task_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
     run_task_parser.set_defaults(func=cmd_run_task)
 
     check_parser = sub.add_parser("check", help="Run readiness probes for configured agents")
     check_parser.add_argument("--config", required=True, help="Path to config JSON")
+    check_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
     check_parser.set_defaults(func=cmd_check)
+
+    bootstrap_parser = sub.add_parser("bootstrap", help="Populate project runtime dirs from global agent state")
+    bootstrap_parser.add_argument("--config", required=True, help="Path to config JSON")
+    bootstrap_parser.add_argument("--mode", choices=["copy", "symlink"], default="copy", help="How to materialize inherited state")
+    bootstrap_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
+    bootstrap_parser.set_defaults(func=cmd_bootstrap)
 
     return parser
 

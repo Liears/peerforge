@@ -9,6 +9,7 @@
       "name": "codex",
       "type": "codex",
       "enabled": true,
+      "timeout_seconds": 40,
       "env": {
         "HOME": "{agent_runtime_dir}/home",
         "XDG_CONFIG_HOME": "{agent_runtime_dir}/xdg/config",
@@ -20,6 +21,7 @@
       "name": "claude",
       "type": "claude",
       "enabled": true,
+      "timeout_seconds": 45,
       "env": {
         "CLAUDE_CONFIG_DIR": "{agent_runtime_dir}/config",
         "CLAUDE_CODE_DEBUG_LOGS_DIR": "{agent_runtime_dir}/logs",
@@ -31,6 +33,7 @@
       "name": "hermes",
       "type": "hermes",
       "enabled": true,
+      "timeout_seconds": 35,
       "env": {
         "HOME": "{agent_runtime_dir}/home",
         "HERMES_ACCEPT_HOOKS": "1"
@@ -40,6 +43,7 @@
       "name": "openclaw",
       "type": "openclaw",
       "enabled": true,
+      "timeout_seconds": 40,
       "agent_id": "replace-me",
       "env": {
         "OPENCLAW_STATE_DIR": "{agent_runtime_dir}/state",

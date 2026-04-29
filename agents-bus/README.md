@@ -71,12 +71,14 @@ Rules:
 ## Quick Start
 
 1. Copy the example config.
-2. Adjust any agent command details that differ on your machine.
-3. Optionally initialize the local task board.
-4. Run a short round-table.
+2. Bootstrap repo-local runtime state from your existing global agent installs.
+3. Adjust any agent command details that differ on your machine.
+4. Optionally initialize the local task board.
+5. Run a short round-table.
 
 ```bash
 cp agents-bus/config.example.json agents-bus/config.json
+python3 agents-bus/bus.py bootstrap --config agents-bus/config.json --mode copy
 python3 agents-bus/bus.py init --root agents-bus
 python3 agents-bus/bus.py run --config agents-bus/config.json --task "Discuss how to split a coding task." --rounds 2
 ```
@@ -102,6 +104,12 @@ Run one task through the agent group:
 python3 agents-bus/bus.py run-task wire-real-clis --root agents-bus --config agents-bus/config.json --rounds 2
 ```
 
+Limit a run to the peers that are currently healthy:
+
+```bash
+python3 agents-bus/bus.py run --config agents-bus/config.json --agents codex,hermes,openclaw --task "Implement and verify a small fix." --rounds 2
+```
+
 Each task can capture:
 
 - `last_run_at`
@@ -113,6 +121,19 @@ Check which peers are actually ready before dispatch:
 ```bash
 python3 agents-bus/bus.py check --config agents-bus/config.json
 ```
+
+Bootstrap repo-local runtime state from your existing user-level installs:
+
+```bash
+python3 agents-bus/bus.py bootstrap --config agents-bus/config.json --mode copy
+```
+
+Current bootstrap behavior:
+
+- `codex`: copies `auth.json` and `config.toml`
+- `claude`: copies `settings.json`
+- `hermes`: copies `config.yaml` and `.env`
+- `openclaw`: copies `openclaw.json`, `agents/`, `identity/`, and `devices/`, then rewrites workspace to the current project
 
 ## Current Environment Notes
 
@@ -136,5 +157,12 @@ The sample config redirects runtime state into `.agent-state/`:
 - `claude`: `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_DEBUG_LOGS_DIR`, and tmp dirs
 - `hermes`: `HOME`
 - `openclaw`: `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH`
+
+In the current machine state, bootstrap + smoke tests confirmed:
+
+- `codex` can return protocol JSON from repo-local state
+- `hermes` can return protocol JSON from repo-local state
+- `openclaw` can return protocol JSON from repo-local state
+- `claude` still times out in repo-local mode and needs more tuning
 
 The bus is written to tolerate those failures and keep the other peers talking.
