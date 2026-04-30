@@ -2,6 +2,9 @@ import argparse
 import json
 import tempfile
 import unittest
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 from unittest import mock
 
@@ -127,6 +130,60 @@ class BusTaskClaimTests(unittest.TestCase):
             bus.cmd_run_task(args)
 
         self.assertIn("task already claimed by hermes", str(ctx.exception))
+
+    def test_task_add_times_out_when_board_lock_is_held_by_another_process(self) -> None:
+        original_board_lock = bus.board_lock
+
+        def short_board_lock(root: Path, timeout_seconds: float = bus.BOARD_LOCK_TIMEOUT_SECONDS):
+            return original_board_lock(root, timeout_seconds=0.05)
+
+        lock_holder = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                textwrap.dedent(
+                    f"""
+                    import time
+                    from pathlib import Path
+                    from peerforge import bus
+
+                    root = Path({str(self.root)!r})
+                    with bus.board_lock(root, timeout_seconds=5):
+                        print("locked", flush=True)
+                        time.sleep(2)
+                    """
+                ),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        try:
+            assert lock_holder.stdout is not None
+            self.assertEqual(lock_holder.stdout.readline().strip(), "locked")
+
+            args = argparse.Namespace(
+                root=str(self.root),
+                title="Locked task",
+                description="Should time out behind the board lock",
+                owner="pm",
+                status="todo",
+                depends_on=None,
+            )
+
+            with mock.patch.object(bus, "board_lock", new=short_board_lock):
+                with self.assertRaises(SystemExit) as ctx:
+                    bus.cmd_task_add(args)
+
+            self.assertIn("timed out waiting for board lock", str(ctx.exception))
+        finally:
+            lock_holder.terminate()
+            try:
+                lock_holder.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                lock_holder.kill()
+                lock_holder.wait(timeout=5)
 
 
 if __name__ == "__main__":
