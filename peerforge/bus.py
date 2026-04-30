@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 import argparse
+import fcntl
 import os
 import json
 import shutil
 import subprocess
 import sys
 import textwrap
+import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+
+BOARD_LOCK_TIMEOUT_SECONDS = 5.0
+CLAIM_LEASE_SECONDS = 900
 
 
 def now_iso() -> str:
@@ -103,6 +110,15 @@ def expand_template(value: str, variables: dict[str, str]) -> str:
 
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def parse_iso8601(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def copy_or_symlink(src: Path, dst: Path, mode: str) -> None:
@@ -707,8 +723,167 @@ def board_path(root: Path) -> Path:
     return root / "board.json"
 
 
+def board_lock_path(root: Path) -> Path:
+    return root / "board.lock"
+
+
 def default_board() -> dict[str, Any]:
     return {"tasks": []}
+
+
+class BoardLockTimeout(RuntimeError):
+    pass
+
+
+class ClaimConflict(RuntimeError):
+    pass
+
+
+@contextmanager
+def board_lock(root: Path, timeout_seconds: float = BOARD_LOCK_TIMEOUT_SECONDS):
+    path = board_lock_path(root)
+    ensure_parent(path)
+    with path.open("a+", encoding="utf-8") as handle:
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise BoardLockTimeout(f"timed out waiting for board lock: {path}")
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def mutate_board(root: Path, fn) -> Any:
+    with board_lock(root):
+        board = read_board(root)
+        result = fn(board)
+        write_board(root, board)
+        return result
+
+
+def is_pending_task(row: dict[str, Any]) -> bool:
+    return row.get("status") in {"todo", "pending"}
+
+
+def has_active_claim(row: dict[str, Any], now: datetime | None = None) -> bool:
+    expires_at = parse_iso8601(row.get("lease_expires_at"))
+    if expires_at is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    return expires_at > current and bool(row.get("claim_token"))
+
+
+def clear_claim(row: dict[str, Any]) -> None:
+    row.pop("claimed_by", None)
+    row.pop("claimed_at", None)
+    row.pop("lease_expires_at", None)
+    row.pop("claim_token", None)
+
+
+def claim_task(row: dict[str, Any], claimer: str, lease_seconds: int) -> str:
+    current = datetime.now(timezone.utc)
+    if not is_pending_task(row):
+        raise ClaimConflict(f"task is not claimable in status {row.get('status')}")
+    if has_active_claim(row, current):
+        owner = row.get("claimed_by", "unknown")
+        lease = row.get("lease_expires_at", "unknown")
+        raise ClaimConflict(f"task already claimed by {owner} until {lease}")
+    claim_token = uuid.uuid4().hex
+    row["claimed_by"] = claimer
+    row["claimed_at"] = current.isoformat()
+    row["lease_expires_at"] = (current + timedelta(seconds=lease_seconds)).isoformat()
+    row["claim_token"] = claim_token
+    row["status"] = "in_progress"
+    return claim_token
+
+
+def next_claimable_task(board: dict[str, Any], owner: str | None = None) -> dict[str, Any] | None:
+    rows = board.get("tasks", [])
+    pending = [row for row in rows if is_pending_task(row)]
+    if owner:
+        pending = [row for row in pending if row.get("owner") == owner]
+    pending = [row for row in pending if not has_active_claim(row)]
+    pending.sort(key=lambda row: row.get("created_at", ""))
+    return pending[0] if pending else None
+
+
+def claim_next_task(root: Path, owner: str | None, claimer: str, lease_seconds: int) -> dict[str, Any]:
+    def mutate(board: dict[str, Any]) -> dict[str, Any]:
+        row = next_claimable_task(board, owner)
+        if row is None:
+            raise ClaimConflict("no claimable task found")
+        claim_token = claim_task(row, claimer, lease_seconds)
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "description": row["description"],
+            "claim_token": claim_token,
+        }
+
+    return mutate_board(root, mutate)
+
+
+def claim_task_by_id(root: Path, task_id: str, claimer: str, lease_seconds: int) -> dict[str, Any]:
+    def mutate(board: dict[str, Any]) -> dict[str, Any]:
+        for row in board.get("tasks", []):
+            if row.get("id") != task_id:
+                continue
+            claim_token = claim_task(row, claimer, lease_seconds)
+            return {
+                "id": row["id"],
+                "title": row["title"],
+                "description": row["description"],
+                "claim_token": claim_token,
+            }
+        raise SystemExit(f"task not found: {task_id}")
+
+    return mutate_board(root, mutate)
+
+
+def complete_claimed_task(
+    root: Path,
+    task_id: str,
+    claim_token: str,
+    transcript: Path,
+    final_status: str = "in_review",
+) -> dict[str, Any]:
+    def mutate(board: dict[str, Any]) -> dict[str, Any]:
+        for row in board.get("tasks", []):
+            if row.get("id") != task_id:
+                continue
+            if row.get("claim_token") != claim_token:
+                raise ClaimConflict(f"claim token mismatch for task: {task_id}")
+            row["status"] = final_status
+            row["last_run_at"] = now_iso()
+            row["last_transcript"] = str(transcript)
+            row.pop("last_error", None)
+            clear_claim(row)
+            return row
+        raise SystemExit(f"task not found: {task_id}")
+
+    return mutate_board(root, mutate)
+
+
+def release_claimed_task(root: Path, task_id: str, claim_token: str, error: str) -> dict[str, Any]:
+    def mutate(board: dict[str, Any]) -> dict[str, Any]:
+        for row in board.get("tasks", []):
+            if row.get("id") != task_id:
+                continue
+            if row.get("claim_token") != claim_token:
+                raise ClaimConflict(f"claim token mismatch for task: {task_id}")
+            row["status"] = "pending"
+            row["last_error"] = error
+            clear_claim(row)
+            return row
+        raise SystemExit(f"task not found: {task_id}")
+
+    return mutate_board(root, mutate)
 
 
 def read_board(root: Path) -> dict[str, Any]:
@@ -723,12 +898,7 @@ def write_board(root: Path, board: dict[str, Any]) -> None:
 
 
 def next_pending_task(board: dict[str, Any], owner: str | None = None) -> dict[str, Any] | None:
-    rows = board.get("tasks", [])
-    pending = [row for row in rows if row.get("status") in {"todo", "pending"}]
-    if owner:
-        pending = [row for row in pending if row.get("owner") == owner]
-    pending.sort(key=lambda row: row.get("created_at", ""))
-    return pending[0] if pending else None
+    return next_claimable_task(board, owner)
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -745,26 +915,31 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_task_add(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    board = read_board(root)
     task_id = normalize_slug(args.title)
-    suffix = 1
-    existing = {item["id"] for item in board["tasks"]}
-    unique_id = task_id
-    while unique_id in existing:
-        suffix += 1
-        unique_id = f"{task_id}-{suffix}"
 
-    row = {
-        "id": unique_id,
-        "title": args.title,
-        "description": args.description,
-        "status": args.status,
-        "owner": args.owner,
-        "created_at": now_iso(),
-        "depends_on": args.depends_on or [],
-    }
-    board["tasks"].append(row)
-    write_board(root, board)
+    def mutate(board: dict[str, Any]) -> str:
+        suffix = 1
+        existing = {item["id"] for item in board["tasks"]}
+        unique_id = task_id
+        while unique_id in existing:
+            suffix += 1
+            unique_id = f"{task_id}-{suffix}"
+        row = {
+            "id": unique_id,
+            "title": args.title,
+            "description": args.description,
+            "status": args.status,
+            "owner": args.owner,
+            "created_at": now_iso(),
+            "depends_on": args.depends_on or [],
+        }
+        board["tasks"].append(row)
+        return unique_id
+
+    try:
+        unique_id = mutate_board(root, mutate)
+    except BoardLockTimeout as exc:
+        raise SystemExit(str(exc))
     print(unique_id)
     return 0
 
@@ -790,18 +965,24 @@ def cmd_task_next(args: argparse.Namespace) -> int:
 
 def cmd_task_update(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    board = read_board(root)
-    for row in board.get("tasks", []):
-        if row["id"] != args.task_id:
-            continue
-        if args.status:
-            row["status"] = args.status
-        if args.owner is not None:
-            row["owner"] = args.owner
-        write_board(root, board)
-        print(row["id"])
-        return 0
-    raise SystemExit(f"task not found: {args.task_id}")
+
+    def mutate(board: dict[str, Any]) -> str:
+        for row in board.get("tasks", []):
+            if row["id"] != args.task_id:
+                continue
+            if args.status:
+                row["status"] = args.status
+            if args.owner is not None:
+                row["owner"] = args.owner
+            return row["id"]
+        raise SystemExit(f"task not found: {args.task_id}")
+
+    try:
+        result = mutate_board(root, mutate)
+    except BoardLockTimeout as exc:
+        raise SystemExit(str(exc))
+    print(result)
+    return 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -823,29 +1004,30 @@ def cmd_run_task(args: argparse.Namespace) -> int:
     if args.ready_only:
         selected = healthy_agent_names(filtered_config(base_config, selected))
     config = filtered_config(base_config, selected)
-    board = read_board(root)
-    for row in board.get("tasks", []):
-        if row["id"] != args.task_id:
-            continue
-        task_text = f"{row['title']}\n\n{row['description']}"
-        bus = Bus(config)
-        log_path = bus.run(task=task_text, rounds=args.rounds, title=row["title"])
-        row["status"] = "in_review"
-        row["last_run_at"] = now_iso()
-        row["last_transcript"] = str(log_path)
-        write_board(root, board)
-        print(str(log_path))
-        return 0
-    raise SystemExit(f"task not found: {args.task_id}")
+    try:
+        claimed = claim_task_by_id(root, args.task_id, args.claimer, args.lease_seconds)
+    except (BoardLockTimeout, ClaimConflict) as exc:
+        raise SystemExit(str(exc))
+    task_text = f"{claimed['title']}\n\n{claimed['description']}"
+    bus = Bus(config)
+    try:
+        log_path = bus.run(task=task_text, rounds=args.rounds, title=claimed["title"])
+    except Exception as exc:
+        try:
+            release_claimed_task(root, claimed["id"], claimed["claim_token"], str(exc))
+        except (BoardLockTimeout, ClaimConflict):
+            pass
+        raise
+    try:
+        complete_claimed_task(root, claimed["id"], claimed["claim_token"], log_path)
+    except (BoardLockTimeout, ClaimConflict) as exc:
+        raise SystemExit(str(exc))
+    print(str(log_path))
+    return 0
 
 
 def cmd_task_run_next(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    board = read_board(root)
-    row = next_pending_task(board, args.owner)
-    if row is None:
-        raise SystemExit("no pending task found")
-
     base_config = read_json(Path(args.config))
     selected = parse_agent_filter(args.agents)
     if args.bootstrap:
@@ -856,18 +1038,28 @@ def cmd_task_run_next(args: argparse.Namespace) -> int:
         selected = healthy_agent_names(filtered_config(base_config, selected))
     config = filtered_config(base_config, selected)
     bus = Bus(config)
-
-    task_text = f"{row['title']}\n\n{row['description']}"
-    log_path = bus.run(task=task_text, rounds=args.rounds, title=row["title"])
-    row["status"] = "in_review"
-    row["last_run_at"] = now_iso()
-    row["last_transcript"] = str(log_path)
-    write_board(root, board)
+    try:
+        claimed = claim_next_task(root, args.owner, args.claimer, args.lease_seconds)
+    except (BoardLockTimeout, ClaimConflict) as exc:
+        raise SystemExit(str(exc))
+    task_text = f"{claimed['title']}\n\n{claimed['description']}"
+    try:
+        log_path = bus.run(task=task_text, rounds=args.rounds, title=claimed["title"])
+    except Exception as exc:
+        try:
+            release_claimed_task(root, claimed["id"], claimed["claim_token"], str(exc))
+        except (BoardLockTimeout, ClaimConflict):
+            pass
+        raise
+    try:
+        complete_claimed_task(root, claimed["id"], claimed["claim_token"], log_path)
+    except (BoardLockTimeout, ClaimConflict) as exc:
+        raise SystemExit(str(exc))
     print(
         json.dumps(
             {
-                "task_id": row["id"],
-                "title": row["title"],
+                "task_id": claimed["id"],
+                "title": claimed["title"],
                 "agents": [adapter.name for adapter in bus.adapters],
                 "transcript": str(log_path),
             },
@@ -981,6 +1173,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_task_parser.add_argument("--config", required=True, help="Path to config JSON")
     run_task_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
     run_task_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
+    run_task_parser.add_argument("--claimer", default="dispatcher", help="Identity written into the task claim")
+    run_task_parser.add_argument("--lease-seconds", type=int, default=CLAIM_LEASE_SECONDS, help="Lease duration for the task claim")
     run_task_parser.add_argument("--ready-only", action="store_true", help="Automatically restrict the run to agents whose probes return ready")
     run_task_parser.set_defaults(func=cmd_run_task)
 
@@ -990,6 +1184,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_run_next_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
     task_run_next_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
     task_run_next_parser.add_argument("--owner", help="Optional owner filter when choosing the next task")
+    task_run_next_parser.add_argument("--claimer", default="dispatcher", help="Identity written into the task claim")
+    task_run_next_parser.add_argument("--lease-seconds", type=int, default=CLAIM_LEASE_SECONDS, help="Lease duration for the task claim")
     task_run_next_parser.add_argument("--ready-only", action="store_true", help="Automatically restrict the run to agents whose probes return ready")
     task_run_next_parser.add_argument("--bootstrap", action="store_true", help="Refresh repo-local runtime state before choosing ready agents")
     task_run_next_parser.add_argument("--bootstrap-mode", choices=["copy", "symlink"], default="copy", help="Bootstrap materialization mode")

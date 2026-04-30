@@ -61,6 +61,7 @@ Behavior that must be locked before coding:
 - `check` and `ready` stay read-only
 - claim conflicts must return a deterministic no-op or conflict outcome
 - heartbeat state stays under `.peerforge/runtime/` and separate from the board
+- `run-task` remains a direct execution path; `task-run-next` is the scheduling path that must claim first
 
 Minimal control-plane boundary:
 

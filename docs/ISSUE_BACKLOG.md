@@ -23,8 +23,8 @@ These issues should land before broader workflow automation.
   - none
 - Scope:
   - add a board write lock
-  - serialize `task-add`, `task-update`, `task-run-next`, and the claim/reclaim path
-  - use one lock file for the board mutation critical section
+  - serialize `task-add`, `task-update`, `task-claim-next`, `task-reclaim`, and `task-run-next`
+  - use one lock file at `.peerforge/board.lock` for the board mutation critical section
 - Must stay true:
   - `check` and `ready` remain read-only
   - lock acquisition must be explicit in tests, not assumed from behavior
