@@ -1,7 +1,7 @@
 {
-  "workdir": "/mnt/d/Work/01-code/muti_team",
-  "session_dir": "/mnt/d/Work/01-code/muti_team/agents-bus/sessions",
-  "runtime_dir": "/mnt/d/Work/01-code/muti_team/.agent-state",
+  "workdir": ".",
+  "session_dir": ".peerforge/sessions",
+  "runtime_dir": ".peerforge/runtime",
   "timeout_seconds": 45,
   "history_limit": 16,
   "agents": [

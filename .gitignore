@@ -1,4 +1,5 @@
 .agent-state/
+.peerforge/
 .codex
 .openclaw/
 AGENTS.md
@@ -7,9 +8,5 @@ IDENTITY.md
 SOUL.md
 TOOLS.md
 USER.md
-agents-bus/runtime/
-agents-bus/sessions/
-agents-bus/board.json
-agents-bus/config.json
-agents-bus/__pycache__/
+peerforge/__pycache__/
 *.pyc

@@ -893,7 +893,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     init_parser = sub.add_parser("init", help="Initialize project state directories")
-    init_parser.add_argument("--root", default="agents-bus", help="Project root directory")
+    init_parser.add_argument("--root", default=".peerforge", help="Project root directory")
     init_parser.set_defaults(func=cmd_init)
 
     run_parser = sub.add_parser("run", help="Run a multi-agent discussion")
@@ -906,7 +906,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.set_defaults(func=cmd_run)
 
     task_add_parser = sub.add_parser("task-add", help="Add a task to the board")
-    task_add_parser.add_argument("--root", default="agents-bus", help="Project root directory")
+    task_add_parser.add_argument("--root", default=".peerforge", help="Project root directory")
     task_add_parser.add_argument("--title", required=True, help="Short task title")
     task_add_parser.add_argument("--description", required=True, help="Task details")
     task_add_parser.add_argument("--owner", default="pm", help="Task owner label")
@@ -915,25 +915,25 @@ def build_parser() -> argparse.ArgumentParser:
     task_add_parser.set_defaults(func=cmd_task_add)
 
     task_list_parser = sub.add_parser("task-list", help="List tasks from the board")
-    task_list_parser.add_argument("--root", default="agents-bus", help="Project root directory")
+    task_list_parser.add_argument("--root", default=".peerforge", help="Project root directory")
     task_list_parser.add_argument("--status", help="Optional status filter")
     task_list_parser.set_defaults(func=cmd_task_list)
 
     task_next_parser = sub.add_parser("task-next", help="Show the next pending task from the board")
-    task_next_parser.add_argument("--root", default="agents-bus", help="Project root directory")
+    task_next_parser.add_argument("--root", default=".peerforge", help="Project root directory")
     task_next_parser.add_argument("--owner", help="Optional owner filter")
     task_next_parser.set_defaults(func=cmd_task_next)
 
     task_update_parser = sub.add_parser("task-update", help="Update a task in the board")
     task_update_parser.add_argument("task_id", help="Task id")
-    task_update_parser.add_argument("--root", default="agents-bus", help="Project root directory")
+    task_update_parser.add_argument("--root", default=".peerforge", help="Project root directory")
     task_update_parser.add_argument("--status", help="New status")
     task_update_parser.add_argument("--owner", help="New owner")
     task_update_parser.set_defaults(func=cmd_task_update)
 
     run_task_parser = sub.add_parser("run-task", help="Run a board task through the bus")
     run_task_parser.add_argument("task_id", help="Task id")
-    run_task_parser.add_argument("--root", default="agents-bus", help="Project root directory")
+    run_task_parser.add_argument("--root", default=".peerforge", help="Project root directory")
     run_task_parser.add_argument("--config", required=True, help="Path to config JSON")
     run_task_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
     run_task_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")

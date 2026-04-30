@@ -29,14 +29,14 @@ It is not the "boss" in the conversation. It is a transport and safety layer.
 ## Files
 
 - `bus.py`: orchestrator and built-in adapters
-- `config.example.json`: sample config for four peers
-- `config.mock.json`: self-contained smoke-test config
-- `board.example.json`: example PM task board
+- `../examples/config.example.json`: sample config for four peers
+- `../examples/config.mock.json`: self-contained smoke-test config
+- `../examples/board.example.json`: example PM task board
 - `mock_peer.py`: deterministic mock peer for protocol validation
 
 At the project level, you can still use it as a PM layer:
 
-- keep a task board in `board.json`
+- keep a task board in `.peerforge/board.json`
 - run selected tasks through the bus
 - attach each transcript back to the task entry
 
@@ -79,16 +79,16 @@ Rules:
 5. Run a short round-table.
 
 ```bash
-cp agents-bus/config.example.json agents-bus/config.json
-python3 agents-bus/bus.py bootstrap --config agents-bus/config.json --mode copy
-python3 agents-bus/bus.py init --root agents-bus
-python3 agents-bus/bus.py run --config agents-bus/config.json --task "Discuss how to split a coding task." --rounds 2
+cp examples/config.example.json .peerforge/config.json
+python3 peerforge/bus.py bootstrap --config .peerforge/config.json --mode copy
+python3 peerforge/bus.py init --root .peerforge
+python3 peerforge/bus.py run --config .peerforge/config.json --task "Discuss how to split a coding task." --rounds 2
 ```
 
 Smoke test without real providers:
 
 ```bash
-python3 agents-bus/bus.py run --config agents-bus/config.mock.json --task "Debate task split." --rounds 2
+python3 peerforge/bus.py run --config examples/config.mock.json --task "Debate task split." --rounds 2
 ```
 
 ## PM Workflow
@@ -96,22 +96,22 @@ python3 agents-bus/bus.py run --config agents-bus/config.mock.json --task "Debat
 Create and inspect tasks:
 
 ```bash
-python3 agents-bus/bus.py task-add --root agents-bus --title "Implement adapter retry policy" --description "Decide retry conditions and code the runner changes."
-python3 agents-bus/bus.py task-list --root agents-bus
-python3 agents-bus/bus.py task-next --root agents-bus
+python3 peerforge/bus.py task-add --root .peerforge --title "Implement adapter retry policy" --description "Decide retry conditions and code the runner changes."
+python3 peerforge/bus.py task-list --root .peerforge
+python3 peerforge/bus.py task-next --root .peerforge
 ```
 
 Run one task through the agent group:
 
 ```bash
-python3 agents-bus/bus.py run-task wire-real-clis --root agents-bus --config agents-bus/config.json --rounds 2
+python3 peerforge/bus.py run-task wire-real-clis --root .peerforge --config .peerforge/config.json --rounds 2
 ```
 
 Limit a run to the peers that are currently healthy:
 
 ```bash
-python3 agents-bus/bus.py run --config agents-bus/config.json --ready-only --task "Implement and verify a small fix." --rounds 2
-python3 agents-bus/bus.py run-ready --config agents-bus/config.json --bootstrap --task "Implement and verify a small fix." --rounds 2
+python3 peerforge/bus.py run --config .peerforge/config.json --ready-only --task "Implement and verify a small fix." --rounds 2
+python3 peerforge/bus.py run-ready --config .peerforge/config.json --bootstrap --task "Implement and verify a small fix." --rounds 2
 ```
 
 Each task can capture:
@@ -122,19 +122,19 @@ Each task can capture:
 
 Current constraint:
 
-- treat `board.json` updates as single-writer operations; do not run multiple `task-add` or `task-update` commands in parallel
+- treat `.peerforge/board.json` updates as single-writer operations; do not run multiple `task-add` or `task-update` commands in parallel
 
 Check which peers are actually ready before dispatch:
 
 ```bash
-python3 agents-bus/bus.py check --config agents-bus/config.json
-python3 agents-bus/bus.py ready --config agents-bus/config.json
+python3 peerforge/bus.py check --config .peerforge/config.json
+python3 peerforge/bus.py ready --config .peerforge/config.json
 ```
 
 Bootstrap repo-local runtime state from your existing user-level installs:
 
 ```bash
-python3 agents-bus/bus.py bootstrap --config agents-bus/config.json --mode copy
+python3 peerforge/bus.py bootstrap --config .peerforge/config.json --mode copy
 ```
 
 Current bootstrap behavior:
@@ -160,7 +160,7 @@ I also observed current machine-level limitations:
 - `codex` is safest when launched with a repo-local `HOME`
 - `claude` non-interactive calls did not return quickly here, so timeout handling matters
 
-The sample config redirects runtime state into `.agent-state/`:
+The sample config redirects runtime state into `.peerforge/runtime/`:
 
 - `codex`: `HOME` plus XDG dirs
 - `claude`: `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_DEBUG_LOGS_DIR`, and tmp dirs
