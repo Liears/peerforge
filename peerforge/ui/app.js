@@ -80,6 +80,15 @@ function eventTypeLabel(value) {
   return labels[value] || value || "未知事件";
 }
 
+function eventBody(event) {
+  const payload = event.payload || {};
+  if (event.type === "system.notice" && payload.code === "no_ready_agents" && Array.isArray(payload.unavailable)) {
+    const parts = payload.unavailable.map((item) => `${item.name}: ${statusLabel(item.status)}`);
+    return `没有匹配到可用 Agent（${parts.join("，")}）`;
+  }
+  return payload.body || payload.message || payload.summary || "";
+}
+
 function formatTargets(targets) {
   return (targets || []).map((target) => {
     if (target === "@all") {
@@ -171,7 +180,7 @@ function renderThread() {
   dom.messageList.innerHTML = events.map((event) => {
     const type = event.type || "unknown";
     const payload = event.payload || {};
-    const body = payload.body || payload.message || payload.summary || "";
+    const body = eventBody(event);
     const meta = event.meta || {};
     const chips = formatTargets(event.target);
     const status = meta.status ? `<span class="kind-chip">${escapeHtml(statusLabel(meta.status))}</span>` : "";

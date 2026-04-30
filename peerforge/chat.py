@@ -259,6 +259,34 @@ def _ready_targets(config: dict[str, Any], requested: list[str]) -> list[str]:
     return selected
 
 
+def unavailable_targets(config: dict[str, Any], requested: list[str]) -> list[dict[str, str]]:
+    names = config_agent_names(config)
+    if "@all" in requested:
+        requested = names
+
+    rows = {row["name"]: row for row in live_agent_status(config, probe=False)}
+    details: list[dict[str, str]] = []
+    bus_instance = bus.Bus(config)
+    adapters = {adapter.name: adapter for adapter in bus_instance.adapters}
+
+    for name in requested:
+        row = rows.get(name)
+        heartbeat = (row or {}).get("heartbeat", "unknown")
+        reason = heartbeat
+        if heartbeat in {"unknown", "offline"} and name in adapters:
+            probe = adapters[name].probe()
+            reason = str(probe.get("status", reason or "unknown"))
+        details.append({"name": name, "status": str(reason or "unknown")})
+    return details
+
+
+def format_unavailable_message(details: list[dict[str, str]]) -> str:
+    if not details:
+        return "No ready agents matched the message"
+    parts = [f"{item['name']}: {item['status']}" for item in details]
+    return "No ready agents matched the message (" + ", ".join(parts) + ")"
+
+
 def post_user_message(root: Path, config_path: Path, body: str, thread_id: str = LIVE_THREAD_ID) -> dict[str, Any]:
     with THREAD_LOCK:
         state = ensure_thread(root, thread_id)
@@ -279,13 +307,19 @@ def post_user_message(root: Path, config_path: Path, body: str, thread_id: str =
 
         ready_targets = _ready_targets(config, requested)
         if not ready_targets:
+            unavailable = unavailable_targets(config, requested)
             append_event(
                 root,
                 create_event(
                     "system.notice",
                     "system",
                     render_targets(requested),
-                    {"level": "warning", "code": "no_ready_agents", "message": "No ready agents matched the message"},
+                    {
+                        "level": "warning",
+                        "code": "no_ready_agents",
+                        "message": format_unavailable_message(unavailable),
+                        "unavailable": unavailable,
+                    },
                     thread_id=thread_id,
                 ),
                 thread_id,

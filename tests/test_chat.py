@@ -79,6 +79,22 @@ class ChatThreadTests(unittest.TestCase):
         self.assertIsNotNone(heartbeat)
         self.assertEqual(heartbeat["state"], "ready")
 
+    def test_post_user_message_reports_unavailable_agent_reason(self) -> None:
+        def fake_probe(self):
+            if self.name == "hermes":
+                return {"status": "needs_login"}
+            return {"status": "ready"}
+
+        bus.write_heartbeat(self.runtime_dir, "hermes", "offline", message="stopped")
+        with mock.patch.object(bus.AgentAdapter, "probe", new=fake_probe):
+            payload = chat.post_user_message(self.root, self.config_path, "@hermes 你在吗")
+
+        notices = [row for row in payload["events"] if row["type"] == "system.notice"]
+        self.assertTrue(notices)
+        last_notice = notices[-1]
+        self.assertEqual(last_notice["payload"]["code"], "no_ready_agents")
+        self.assertIn("hermes: needs_login", last_notice["payload"]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()
