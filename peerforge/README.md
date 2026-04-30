@@ -33,6 +33,7 @@ For the concrete P0/P1 issue breakdown, see [../docs/ISSUE_BACKLOG.md](/mnt/d/Wo
 ## Files
 
 - `bus.py`: orchestrator and built-in adapters
+- `dashboard.py`: local HTTP server for the transcript and board dashboard
 - `../examples/config.example.json`: sample config for four peers
 - `../examples/config.mock.json`: self-contained smoke-test config
 - `../examples/board.example.json`: example PM task board
@@ -188,3 +189,24 @@ In the current machine state, bootstrap + smoke tests confirmed:
 - `claude` is still not usable in repo-local mode on this machine; bootstrap now makes it fail fast instead of hanging on inherited proxy settings
 
 The bus is written to tolerate those failures and keep the other peers talking.
+
+## Dashboard
+
+Start the local dashboard:
+
+```bash
+python3 peerforge/dashboard.py --root .peerforge --port 8765
+```
+
+The dashboard reads:
+
+- `.peerforge/board.json`
+- `.peerforge/sessions/*/summary.json`
+- `.peerforge/sessions/*/transcript.jsonl`
+
+It provides:
+
+- a board task summary strip
+- a session list
+- a group-chat transcript view with sender, recipients, round number, and message kind
+- automatic refresh for ongoing local runs

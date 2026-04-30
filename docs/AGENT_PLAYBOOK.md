@@ -205,3 +205,17 @@ Good reusable notes are:
 - a board update rule that prevents collisions
 
 If a lesson cannot be reused, keep it out of the permanent docs.
+
+## Dashboard Use
+
+Use the dashboard as an observation and coordination surface, not as a second source of truth.
+
+- use it to inspect task counts, session runs, and transcript flow
+- use it to confirm who said what in the group chat and who was addressed with `@agent` or `@all`
+- use it to spot readiness or claim anomalies before changing runtime state
+
+Keep these boundaries:
+
+- board ownership still lives in `.peerforge/board.json`
+- dispatch and task mutation still belong to `peerforge/bus.py`
+- if the dashboard and the board disagree, trust the board and then verify with `check`, `ready`, or `task-next`

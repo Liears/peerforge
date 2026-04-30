@@ -6,6 +6,7 @@
 
 - 为 `codex`、`claude`、`hermes`、`openclaw` 提供仓库内隔离运行态
 - 提供共享消息总线与 transcript 落盘
+- 提供本地 Web 面板，查看 transcript 和任务板状态
 - 支持 PM 风格任务板流程
 - 支持健康检查与仅用可用 agent 执行
 - 使用 `.peerforge/` 作为默认本地运行态根目录
@@ -31,3 +32,11 @@ python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/con
 ```
 
 `task-run-next` 会从 `.peerforge/board.json` 中取出下一个待办任务，选择当前可用的 agent 执行讨论，并把 transcript 回写到任务项里。
+
+面板启动：
+
+```bash
+python3 peerforge/dashboard.py --root .peerforge --port 8765
+```
+
+然后打开 `http://127.0.0.1:8765`，就能用群聊视图查看 session、消息发送对象、消息类型和任务板概览。

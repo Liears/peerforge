@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>peerforge dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">peerforge</p>
+          <h1>Agent Group Console</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="refresh-button" class="ghost-button">Refresh</button>
+          <p id="status-line" class="status-line">Loading…</p>
+        </div>
+      </header>
+
+      <section class="board-strip">
+        <div class="board-title">
+          <p class="eyebrow">Board</p>
+          <h2>Task Overview</h2>
+        </div>
+        <div id="board-metrics" class="metrics"></div>
+      </section>
+
+      <main class="layout">
+        <aside class="sidebar panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Sessions</p>
+              <h2>Runs</h2>
+            </div>
+            <span id="session-count" class="pill"></span>
+          </div>
+          <div id="session-list" class="session-list"></div>
+        </aside>
+
+        <section class="transcript panel">
+          <div class="panel-head transcript-head">
+            <div>
+              <p class="eyebrow">Group Chat</p>
+              <h2 id="transcript-title">Select a session</h2>
+            </div>
+            <div id="transcript-meta" class="transcript-meta"></div>
+          </div>
+          <div id="message-list" class="message-list empty-state">
+            <div>
+              <h3>No session selected</h3>
+              <p>Pick a run on the left to inspect the agent conversation.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js" defer></script>
+  </body>
+  </html>

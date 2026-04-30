@@ -8,6 +8,7 @@ Current focus:
 
 - repo-local runtime isolation for `codex`, `claude`, `hermes`, and `openclaw`
 - a shared message bus with persisted transcripts
+- a local web dashboard for transcript and board visibility
 - PM-style task board workflows
 - readiness checks and ready-only execution
 - `.peerforge/` as the primary local runtime root
@@ -33,3 +34,11 @@ python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/con
 ```
 
 `task-run-next` reads the next pending task from `.peerforge/board.json`, selects the requested ready agents, runs the discussion, and writes the transcript back to the task entry.
+
+Dashboard:
+
+```bash
+python3 peerforge/dashboard.py --root .peerforge --port 8765
+```
+
+Then open `http://127.0.0.1:8765` to inspect session runs as a group chat view, including sender, recipients, message kinds, and board task counts.
