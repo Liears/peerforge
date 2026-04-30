@@ -226,35 +226,110 @@ def config_agent_names(config: dict[str, Any]) -> list[str]:
     return [agent["name"] for agent in config.get("agents", []) if agent.get("enabled", True)]
 
 
+def classify_agent_status(
+    heartbeat: dict[str, Any] | None,
+    *,
+    probe_status: str = "skipped",
+) -> dict[str, Any]:
+    heartbeat_raw_state = str(heartbeat.get("state", "unknown")) if heartbeat is not None else "unknown"
+    heartbeat_state = bus.heartbeat_state(heartbeat) if heartbeat is not None else "unknown"
+    heartbeat_fresh = heartbeat is not None and heartbeat_state != "offline"
+    heartbeat_expired = heartbeat is not None and heartbeat_state == "offline" and heartbeat_raw_state in {"ready", "busy"}
+
+    display = "unknown"
+    reason = "no_heartbeat"
+    available = False
+
+    if heartbeat is not None:
+        if heartbeat_state == "ready":
+            display = "idle"
+            reason = "heartbeat_ready"
+            available = True
+        elif heartbeat_state == "busy":
+            display = "busy"
+            reason = "heartbeat_busy"
+        elif heartbeat_raw_state == "offline":
+            display = "offline"
+            reason = "heartbeat_offline"
+        elif heartbeat_expired:
+            display = "stale_idle" if heartbeat_raw_state == "ready" else "stale_busy"
+            reason = "heartbeat_expired"
+        else:
+            display = "offline"
+            reason = "heartbeat_invalid"
+
+    if probe_status != "skipped":
+        if probe_status == "ready":
+            display = "idle"
+            reason = "probe_ready"
+            available = True
+        elif probe_status == "busy":
+            display = "busy"
+            reason = "probe_busy"
+            available = False
+        elif probe_status in {"needs_login", "needs_provider", "offline", "error"}:
+            display = probe_status
+            reason = probe_status
+            available = False
+        else:
+            display = probe_status
+            reason = probe_status
+            available = False
+
+    return {
+        "heartbeat_state": heartbeat_state,
+        "heartbeat_raw_state": heartbeat_raw_state,
+        "heartbeat_fresh": heartbeat_fresh,
+        "heartbeat_expired": heartbeat_expired,
+        "display": display,
+        "available": available,
+        "availability_reason": reason,
+    }
+
+
+def agent_status_row(
+    adapter: Any,
+    runtime_root: Path,
+    *,
+    probe: bool = False,
+) -> dict[str, Any]:
+    heartbeat = bus.read_heartbeat(runtime_root, adapter.name)
+    probe_status = adapter.probe().get("status", "error") if probe else "skipped"
+    classification = classify_agent_status(heartbeat, probe_status=probe_status)
+    row = {
+        "name": adapter.name,
+        "type": adapter.type,
+        "probe": probe_status,
+        "heartbeat": classification["display"],
+        "display": classification["display"],
+        "available": classification["available"],
+        "availability_reason": classification["availability_reason"],
+        "heartbeat_state": classification["heartbeat_state"],
+        "heartbeat_fresh": classification["heartbeat_fresh"],
+        "heartbeat_expired": classification["heartbeat_expired"],
+        "heartbeat_raw_state": classification["heartbeat_raw_state"],
+        "heartbeat_raw": heartbeat,
+    }
+    if heartbeat is not None:
+        row["heartbeat_state_raw"] = heartbeat.get("state", "unknown")
+    return row
+
+
 def live_agent_status(config: dict[str, Any], probe: bool = False) -> list[dict[str, Any]]:
     runtime_root = Path(config.get("runtime_dir", ".peerforge/runtime")).resolve()
     bus_instance = bus.Bus(config)
-    rows: list[dict[str, Any]] = []
-    for adapter in bus_instance.adapters:
-        heartbeat = bus.read_heartbeat(runtime_root, adapter.name)
-        probe_status = adapter.probe().get("status", "error") if probe else "skipped"
-        heartbeat_state = bus.heartbeat_state(heartbeat) if heartbeat is not None else "unknown"
-        rows.append(
-            {
-                "name": adapter.name,
-                "type": adapter.type,
-                "probe": probe_status,
-                "heartbeat": heartbeat_state,
-                "heartbeat_raw": heartbeat,
-            }
-        )
-    return rows
+    return [agent_status_row(adapter, runtime_root, probe=probe) for adapter in bus_instance.adapters]
 
 
 def _ready_targets(config: dict[str, Any], requested: list[str]) -> list[str]:
     if "@all" in requested:
         requested = config_agent_names(config)
     status_rows = live_agent_status(config, probe=False)
-    states = {row["name"]: row["heartbeat"] for row in status_rows}
+    states = {row["name"]: row for row in status_rows}
     selected: list[str] = []
     for name in requested:
-        state = states.get(name, "unknown")
-        if state not in {"busy", "offline"}:
+        row = states.get(name)
+        if row and row.get("available"):
             selected.append(name)
     return selected
 
@@ -264,26 +339,47 @@ def unavailable_targets(config: dict[str, Any], requested: list[str]) -> list[di
     if "@all" in requested:
         requested = names
 
-    rows = {row["name"]: row for row in live_agent_status(config, probe=False)}
-    details: list[dict[str, str]] = []
+    runtime_root = Path(config.get("runtime_dir", ".peerforge/runtime")).resolve()
     bus_instance = bus.Bus(config)
     adapters = {adapter.name: adapter for adapter in bus_instance.adapters}
+    rows = {row["name"]: row for row in live_agent_status(config, probe=False)}
+    details: list[dict[str, str]] = []
 
     for name in requested:
         row = rows.get(name)
-        heartbeat = (row or {}).get("heartbeat", "unknown")
-        reason = heartbeat
-        if heartbeat in {"unknown", "offline"} and name in adapters:
-            probe = adapters[name].probe()
-            reason = str(probe.get("status", reason or "unknown"))
-        details.append({"name": name, "status": str(reason or "unknown")})
+        if row is None and name in adapters:
+            row = agent_status_row(adapters[name], runtime_root, probe=False)
+        if row is None:
+            details.append({"name": name, "status": "unknown", "reason": "not_configured"})
+            continue
+        if row.get("available"):
+            continue
+        if row.get("display") in {"unknown", "offline"} and name in adapters:
+            probed = agent_status_row(adapters[name], runtime_root, probe=True)
+            row = probed
+            if row.get("available"):
+                continue
+        details.append(
+            {
+                "name": name,
+                "status": str(row.get("display", "unknown")),
+                "reason": str(row.get("availability_reason", row.get("display", "unknown"))),
+            }
+        )
     return details
 
 
 def format_unavailable_message(details: list[dict[str, str]]) -> str:
     if not details:
         return "No ready agents matched the message"
-    parts = [f"{item['name']}: {item['status']}" for item in details]
+    parts = []
+    for item in details:
+        status = item.get("status", "unknown")
+        reason = item.get("reason")
+        if reason and reason != status:
+            parts.append(f"{item['name']}: {status} ({reason})")
+        else:
+            parts.append(f"{item['name']}: {status}")
     return "No ready agents matched the message (" + ", ".join(parts) + ")"
 
 

@@ -33,6 +33,8 @@ class ChatThreadTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
+        bus.write_heartbeat(self.runtime_dir, "codex", "ready", message="idle")
+        bus.write_heartbeat(self.runtime_dir, "hermes", "ready", message="idle")
 
     def test_parse_mentions_supports_named_agents_and_all(self) -> None:
         names = ["codex", "claude", "hermes", "openclaw"]
@@ -78,6 +80,49 @@ class ChatThreadTests(unittest.TestCase):
         heartbeat = bus.read_heartbeat(self.runtime_dir, "codex")
         self.assertIsNotNone(heartbeat)
         self.assertEqual(heartbeat["state"], "ready")
+
+    def test_live_agent_status_keeps_expired_heartbeat_separate_from_offline(self) -> None:
+        bus.write_heartbeat(self.runtime_dir, "codex", "ready", ttl_seconds=-1, message="expired")
+
+        with mock.patch.object(bus.AgentAdapter, "probe", side_effect=AssertionError("probe should not run")):
+            rows = chat.live_agent_status(
+                {
+                    "workdir": self.tmpdir.name,
+                    "session_dir": str(self.session_dir),
+                    "runtime_dir": str(self.runtime_dir),
+                    "agents": [
+                        {"name": "codex", "type": "command", "command": ["echo", "{prompt}"]},
+                        {"name": "hermes", "type": "command", "command": ["echo", "{prompt}"]},
+                    ],
+                },
+                probe=False,
+            )
+
+        codex = next(row for row in rows if row["name"] == "codex")
+        self.assertEqual(codex["heartbeat_state"], "offline")
+        self.assertEqual(codex["display"], "stale_idle")
+        self.assertFalse(codex["available"])
+        self.assertEqual(codex["probe"], "skipped")
+
+    def test_unavailable_targets_uses_stale_display_without_probe(self) -> None:
+        bus.write_heartbeat(self.runtime_dir, "hermes", "busy", ttl_seconds=-1, message="expired busy")
+
+        with mock.patch.object(bus.AgentAdapter, "probe", side_effect=AssertionError("probe should not run")):
+            details = chat.unavailable_targets(
+                {
+                    "workdir": self.tmpdir.name,
+                    "session_dir": str(self.session_dir),
+                    "runtime_dir": str(self.runtime_dir),
+                    "agents": [
+                        {"name": "codex", "type": "command", "command": ["echo", "{prompt}"]},
+                        {"name": "hermes", "type": "command", "command": ["echo", "{prompt}"]},
+                    ],
+                },
+                ["hermes"],
+            )
+
+        self.assertEqual(details[0]["status"], "stale_busy")
+        self.assertEqual(details[0]["reason"], "heartbeat_expired")
 
     def test_post_user_message_reports_unavailable_agent_reason(self) -> None:
         def fake_probe(self):
