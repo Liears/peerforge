@@ -9,10 +9,15 @@
 - 支持 PM 风格任务板流程
 - 支持健康检查与仅用可用 agent 执行
 - 使用 `.peerforge/` 作为默认本地运行态根目录
+- 提供轻量 Git 工作流，覆盖分支、Issue、PR 和经验共享
 
 核心模块：
 
 - [peerforge/README.md](/mnt/d/Work/01-code/muti_team/peerforge/README.md)
+- [docs/PROJECT_CHARTER.md](/mnt/d/Work/01-code/muti_team/docs/PROJECT_CHARTER.md)
+- [CONTRIBUTING.md](/mnt/d/Work/01-code/muti_team/CONTRIBUTING.md)
+
+`CONTRIBUTING.md` 用于分支、Issue、PR 和经验共享规则。`docs/PROJECT_CHARTER.md` 用于说明当前项目目标和近期路线图。
 
 快速开始：
 

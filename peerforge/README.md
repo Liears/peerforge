@@ -26,6 +26,9 @@ A lightweight orchestrator still exists, but only to:
 
 It is not the "boss" in the conversation. It is a transport and safety layer.
 
+For contribution workflow and Git conventions, see [../CONTRIBUTING.md](/mnt/d/Work/01-code/muti_team/CONTRIBUTING.md).
+For the project goal and current milestone queue, see [../docs/PROJECT_CHARTER.md](/mnt/d/Work/01-code/muti_team/docs/PROJECT_CHARTER.md).
+
 ## Files
 
 - `bus.py`: orchestrator and built-in adapters
@@ -90,6 +93,8 @@ Smoke test without real providers:
 ```bash
 python3 peerforge/bus.py run --config examples/config.mock.json --task "Debate task split." --rounds 2
 ```
+
+If you discover a reusable command, timeout tweak, or workflow pattern, record it in `CONTRIBUTING.md` or the relevant README instead of keeping it in chat.
 
 ## PM Workflow
 
