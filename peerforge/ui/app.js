@@ -38,10 +38,46 @@ function escapeHtml(value) {
 }
 
 function formatDate(value) {
-  if (!value) return "unknown";
+  if (!value) return "未知";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function statusLabel(value) {
+  const labels = {
+    ready: "就绪",
+    busy: "忙碌",
+    offline: "离线",
+    unknown: "未知",
+    needs_login: "需登录",
+    needs_provider: "需配置 Provider",
+    error: "错误",
+    todo: "待办",
+    in_progress: "进行中",
+    in_review: "评审中",
+    done: "完成",
+    other: "其他",
+  };
+  return labels[value] || value || "未知";
+}
+
+function eventTypeLabel(value) {
+  const labels = {
+    "user.input": "用户输入",
+    "chat.message": "聊天消息",
+    "tool.call": "工具调用",
+    "tool.result": "工具结果",
+    "system.notice": "系统通知",
+    "heartbeat.updated": "心跳更新",
+    "session.started": "会话开始",
+    "session.ended": "会话结束",
+    "task.claimed": "任务已认领",
+    "task.released": "任务已释放",
+    "task.status_changed": "任务状态变更",
+    "task.completed": "任务已完成",
+  };
+  return labels[value] || value || "未知事件";
 }
 
 function formatTargets(targets) {
@@ -68,11 +104,11 @@ function renderBoard() {
   const tasks = state.board.tasks || [];
   const counts = boardCounts(tasks);
   const cards = [
-    ["Total", counts.total],
-    ["Todo", counts.todo],
-    ["In Progress", counts.in_progress],
-    ["In Review", counts.in_review],
-    ["Done", counts.done],
+    ["总数", counts.total],
+    ["待办", counts.todo],
+    ["进行中", counts.in_progress],
+    ["评审中", counts.in_review],
+    ["完成", counts.done],
   ];
   dom.boardMetrics.innerHTML = cards.map(([label, value]) => `
     <article class="metric-card">
@@ -82,15 +118,15 @@ function renderBoard() {
   `).join("");
 
   dom.taskList.innerHTML = tasks.map((task) => {
-    const claim = task.claimed_by ? `<p class="task-claim">claimed by ${escapeHtml(task.claimed_by)}</p>` : "";
-    const lease = task.lease_expires_at ? `<p class="task-lease">lease ${escapeHtml(formatDate(task.lease_expires_at))}</p>` : "";
+    const claim = task.claimed_by ? `<p class="task-claim">认领者：${escapeHtml(task.claimed_by)}</p>` : "";
+    const lease = task.lease_expires_at ? `<p class="task-lease">租约到期：${escapeHtml(formatDate(task.lease_expires_at))}</p>` : "";
     return `
       <article class="task-card status-${escapeHtml(task.status || "other")}">
         <div class="task-top">
           <h3>${escapeHtml(task.title || task.id)}</h3>
-          <span class="status-pill">${escapeHtml(task.status || "unknown")}</span>
+          <span class="status-pill">${escapeHtml(statusLabel(task.status || "unknown"))}</span>
         </div>
-        <p class="task-meta">${escapeHtml(task.id)} · owner ${escapeHtml(task.owner || "n/a")}</p>
+        <p class="task-meta">${escapeHtml(task.id)} · 负责人 ${escapeHtml(task.owner || "未指定")}</p>
         ${claim}
         ${lease}
       </article>
@@ -102,16 +138,16 @@ function renderAgents() {
   dom.agentList.innerHTML = state.agents.map((agent) => {
     const heartbeat = agent.heartbeat_raw || {};
     const status = agent.heartbeat || agent.probe || "offline";
-    const task = heartbeat.task_id ? `<p class="agent-detail">task ${escapeHtml(heartbeat.task_id)}</p>` : "";
+    const task = heartbeat.task_id ? `<p class="agent-detail">任务：${escapeHtml(heartbeat.task_id)}</p>` : "";
     return `
       <article class="agent-card state-${escapeHtml(status)}">
         <div class="agent-top">
           <h3>${escapeHtml(agent.name)}</h3>
-          <span class="status-pill">${escapeHtml(status)}</span>
+          <span class="status-pill">${escapeHtml(statusLabel(status))}</span>
         </div>
-        <p class="agent-detail">probe ${escapeHtml(agent.probe)}</p>
+        <p class="agent-detail">探测：${escapeHtml(statusLabel(agent.probe))}</p>
         ${task}
-        <p class="agent-detail">updated ${escapeHtml(formatDate(heartbeat.updated_at))}</p>
+        <p class="agent-detail">最近更新：${escapeHtml(formatDate(heartbeat.updated_at))}</p>
       </article>
     `;
   }).join("");
@@ -120,14 +156,14 @@ function renderAgents() {
 function renderThread() {
   const thread = state.liveThread.thread || {};
   const events = state.liveThread.events || [];
-  dom.threadTitle.textContent = thread.title || "Main agent thread";
+  dom.threadTitle.textContent = thread.title || "主 Agent 线程";
   dom.threadMeta.innerHTML = `
     <div class="meta-block">
-      <p class="eyebrow">Updated</p>
+      <p class="eyebrow">更新时间</p>
       <p class="meta-value">${escapeHtml(formatDate(thread.updated_at))}</p>
     </div>
     <div class="meta-block">
-      <p class="eyebrow">Events</p>
+      <p class="eyebrow">事件数</p>
       <p class="meta-value">${events.length}</p>
     </div>
   `;
@@ -138,11 +174,11 @@ function renderThread() {
     const body = payload.body || payload.message || payload.summary || "";
     const meta = event.meta || {};
     const chips = formatTargets(event.target);
-    const status = meta.status ? `<span class="kind-chip">${escapeHtml(meta.status)}</span>` : "";
+    const status = meta.status ? `<span class="kind-chip">${escapeHtml(statusLabel(meta.status))}</span>` : "";
     const detail = type === "tool.result" ? `
       <div class="tool-detail">
-        <span>tool ${escapeHtml(payload.tool || "")}</span>
-        <span>${payload.ok ? "ok" : "error"}</span>
+        <span>工具 ${escapeHtml(payload.tool || "")}</span>
+        <span>${payload.ok ? "成功" : "失败"}</span>
         <span>${escapeHtml(String(payload.duration_ms ?? ""))}ms</span>
       </div>
       ${payload.error ? `<pre class="message-body">${escapeHtml(payload.error)}</pre>` : ""}
@@ -152,7 +188,7 @@ function renderThread() {
         <div class="message-top">
           <div class="sender-line">
             <span class="sender">${escapeHtml(event.source || "system")}</span>
-            <span class="kind-chip">${escapeHtml(type)}</span>
+            <span class="kind-chip">${escapeHtml(eventTypeLabel(type))}</span>
             ${status}
           </div>
           <span class="timestamp">${escapeHtml(formatDate(event.created_at))}</span>
@@ -167,7 +203,7 @@ function renderThread() {
 }
 
 async function refreshAll() {
-  dom.statusLine.textContent = "Refreshing…";
+  dom.statusLine.textContent = "刷新中…";
   try {
     const [board, liveThread, agentsPayload] = await Promise.all([
       fetchJson("/api/board"),
@@ -180,9 +216,9 @@ async function refreshAll() {
     renderBoard();
     renderAgents();
     renderThread();
-    dom.statusLine.textContent = "Ready";
+    dom.statusLine.textContent = "已就绪";
   } catch (error) {
-    dom.statusLine.textContent = `Refresh failed: ${error.message}`;
+    dom.statusLine.textContent = `刷新失败：${error.message}`;
   }
 }
 
@@ -201,16 +237,16 @@ async function sendMessage(event) {
   };
   state.liveThread.events = [...(state.liveThread.events || []), optimisticEvent];
   renderThread();
-  dom.statusLine.textContent = "Routing message…";
+  dom.statusLine.textContent = "消息路由中…";
   try {
     await fetchJson("/api/live-thread/messages", {
       method: "POST",
       body: JSON.stringify({ body }),
     });
     await refreshAll();
-    dom.statusLine.textContent = "Message routed";
+    dom.statusLine.textContent = "消息已发送";
   } catch (error) {
-    dom.statusLine.textContent = `Send failed: ${error.message}`;
+    dom.statusLine.textContent = `发送失败：${error.message}`;
   }
 }
 

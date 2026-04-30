@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>peerforge console</title>
+    <title>peerforge 控制台</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -11,12 +11,12 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">peerforge</p>
-          <h1>Multi-Agent Console</h1>
-          <p class="topbar-copy">Single-thread group chat with task context, agent state, and visible execution events.</p>
+          <h1>多 Agent 协作控制台</h1>
+          <p class="topbar-copy">单线程群聊视图，集中展示任务上下文、Agent 状态和可见执行事件。</p>
         </div>
         <div class="topbar-actions">
-          <button id="refresh-button" class="ghost-button">Refresh</button>
-          <p id="status-line" class="status-line">Loading…</p>
+          <button id="refresh-button" class="ghost-button">刷新</button>
+          <p id="status-line" class="status-line">加载中…</p>
         </div>
       </header>
 
@@ -24,8 +24,8 @@
         <aside class="panel tasks-panel">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">Board</p>
-              <h2>Task Context</h2>
+              <p class="eyebrow">任务板</p>
+              <h2>任务上下文</h2>
             </div>
           </div>
           <div id="board-metrics" class="metrics"></div>
@@ -35,17 +35,17 @@
         <section class="panel chat-panel">
           <div class="panel-head chat-head">
             <div>
-              <p class="eyebrow">Live Thread</p>
-              <h2 id="thread-title">Main agent thread</h2>
+              <p class="eyebrow">实时线程</p>
+              <h2 id="thread-title">主 Agent 线程</h2>
             </div>
             <div id="thread-meta" class="thread-meta"></div>
           </div>
           <div id="message-list" class="message-list"></div>
           <form id="chat-form" class="input-bar">
-            <div class="input-hint">Examples: <code>@codex review the router</code> · <code>@all propose next step</code></div>
+            <div class="input-hint">示例：<code>@codex 检查路由器实现</code> · <code>@all 讨论下一步计划</code></div>
             <div class="input-row">
-              <textarea id="chat-input" rows="3" placeholder="Message the team with @codex, @claude, @hermes, @openclaw, or @all"></textarea>
-              <button type="submit" class="send-button">Send</button>
+              <textarea id="chat-input" rows="3" placeholder="输入消息，可使用 @codex、@claude、@hermes、@openclaw 或 @all"></textarea>
+              <button type="submit" class="send-button">发送</button>
             </div>
           </form>
         </section>
@@ -53,8 +53,8 @@
         <aside class="panel agents-panel">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">Agents</p>
-              <h2>Runtime State</h2>
+              <p class="eyebrow">Agent</p>
+              <h2>运行状态</h2>
             </div>
           </div>
           <div id="agent-list" class="agent-list"></div>
