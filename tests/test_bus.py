@@ -203,6 +203,10 @@ class BusTaskClaimTests(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 lock_holder.kill()
                 lock_holder.wait(timeout=5)
+            if lock_holder.stdout is not None:
+                lock_holder.stdout.close()
+            if lock_holder.stderr is not None:
+                lock_holder.stderr.close()
 
     def test_healthy_agent_names_excludes_busy_heartbeat(self) -> None:
         config = {

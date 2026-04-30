@@ -33,6 +33,7 @@ For the concrete P0/P1 issue breakdown, see [../docs/ISSUE_BACKLOG.md](/mnt/d/Wo
 ## Files
 
 - `bus.py`: orchestrator and built-in adapters
+- `chat.py`: live thread event log and `@agent` routing loop
 - `dashboard.py`: local HTTP server for the transcript and board dashboard
 - `../examples/config.example.json`: sample config for four peers
 - `../examples/config.mock.json`: self-contained smoke-test config
@@ -195,7 +196,7 @@ The bus is written to tolerate those failures and keep the other peers talking.
 Start the local dashboard:
 
 ```bash
-python3 peerforge/dashboard.py --root .peerforge --port 8765
+python3 peerforge/dashboard.py --root .peerforge --config .peerforge/config.json --port 8765
 ```
 
 The dashboard reads:
@@ -203,10 +204,14 @@ The dashboard reads:
 - `.peerforge/board.json`
 - `.peerforge/sessions/*/summary.json`
 - `.peerforge/sessions/*/transcript.jsonl`
+- `.peerforge/threads/main/events.jsonl`
+- `.peerforge/runtime/heartbeats/*.json`
 
 It provides:
 
-- a board task summary strip
-- a session list
-- a group-chat transcript view with sender, recipients, round number, and message kind
+- a live group-chat console with one input box
+- `@agent` and `@all` routing
+- visible `tool.call` and `tool.result` events
+- board task context
+- agent runtime state
 - automatic refresh for ongoing local runs

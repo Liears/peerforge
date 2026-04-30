@@ -9,6 +9,7 @@ Current focus:
 - repo-local runtime isolation for `codex`, `claude`, `hermes`, and `openclaw`
 - a shared message bus with persisted transcripts
 - a local web dashboard for transcript and board visibility
+- a live group-chat console with `@agent` routing and visible execution events
 - PM-style task board workflows
 - readiness checks and ready-only execution
 - `.peerforge/` as the primary local runtime root
@@ -18,6 +19,10 @@ Core module:
 
 - [peerforge/README.md](/mnt/d/Work/01-code/muti_team/peerforge/README.md)
 - [docs/PROJECT_CHARTER.md](/mnt/d/Work/01-code/muti_team/docs/PROJECT_CHARTER.md)
+- [docs/ARCHITECTURE.md](/mnt/d/Work/01-code/muti_team/docs/ARCHITECTURE.md)
+- [docs/EVENT_MODEL.md](/mnt/d/Work/01-code/muti_team/docs/EVENT_MODEL.md)
+- [docs/FRONTEND_MVP.md](/mnt/d/Work/01-code/muti_team/docs/FRONTEND_MVP.md)
+- [docs/ACCEPTANCE.md](/mnt/d/Work/01-code/muti_team/docs/ACCEPTANCE.md)
 - [docs/VERIFICATION.md](/mnt/d/Work/01-code/muti_team/docs/VERIFICATION.md)
 - [docs/ISSUE_BACKLOG.md](/mnt/d/Work/01-code/muti_team/docs/ISSUE_BACKLOG.md)
 - [CONTRIBUTING.md](/mnt/d/Work/01-code/muti_team/CONTRIBUTING.md)
@@ -38,7 +43,11 @@ python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/con
 Dashboard:
 
 ```bash
-python3 peerforge/dashboard.py --root .peerforge --port 8765
+python3 peerforge/dashboard.py --root .peerforge --config .peerforge/config.json --port 8765
 ```
 
-Then open `http://127.0.0.1:8765` to inspect session runs as a group chat view, including sender, recipients, message kinds, and board task counts.
+Then open `http://127.0.0.1:8765` to use the live multi-agent console:
+
+- send `@codex`, `@claude`, `@hermes`, `@openclaw`, or `@all`
+- watch tool calls and tool results in the same timeline
+- inspect board task state and agent heartbeat state

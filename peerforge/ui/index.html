@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>peerforge dashboard</title>
+    <title>peerforge console</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -11,7 +11,8 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">peerforge</p>
-          <h1>Agent Group Console</h1>
+          <h1>Multi-Agent Console</h1>
+          <p class="topbar-copy">Single-thread group chat with task context, agent state, and visible execution events.</p>
         </div>
         <div class="topbar-actions">
           <button id="refresh-button" class="ghost-button">Refresh</button>
@@ -19,41 +20,45 @@
         </div>
       </header>
 
-      <section class="board-strip">
-        <div class="board-title">
-          <p class="eyebrow">Board</p>
-          <h2>Task Overview</h2>
-        </div>
-        <div id="board-metrics" class="metrics"></div>
-      </section>
-
       <main class="layout">
-        <aside class="sidebar panel">
+        <aside class="panel tasks-panel">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">Sessions</p>
-              <h2>Runs</h2>
+              <p class="eyebrow">Board</p>
+              <h2>Task Context</h2>
             </div>
-            <span id="session-count" class="pill"></span>
           </div>
-          <div id="session-list" class="session-list"></div>
+          <div id="board-metrics" class="metrics"></div>
+          <div id="task-list" class="task-list"></div>
         </aside>
 
-        <section class="transcript panel">
-          <div class="panel-head transcript-head">
+        <section class="panel chat-panel">
+          <div class="panel-head chat-head">
             <div>
-              <p class="eyebrow">Group Chat</p>
-              <h2 id="transcript-title">Select a session</h2>
+              <p class="eyebrow">Live Thread</p>
+              <h2 id="thread-title">Main agent thread</h2>
             </div>
-            <div id="transcript-meta" class="transcript-meta"></div>
+            <div id="thread-meta" class="thread-meta"></div>
           </div>
-          <div id="message-list" class="message-list empty-state">
-            <div>
-              <h3>No session selected</h3>
-              <p>Pick a run on the left to inspect the agent conversation.</p>
+          <div id="message-list" class="message-list"></div>
+          <form id="chat-form" class="input-bar">
+            <div class="input-hint">Examples: <code>@codex review the router</code> · <code>@all propose next step</code></div>
+            <div class="input-row">
+              <textarea id="chat-input" rows="3" placeholder="Message the team with @codex, @claude, @hermes, @openclaw, or @all"></textarea>
+              <button type="submit" class="send-button">Send</button>
             </div>
-          </div>
+          </form>
         </section>
+
+        <aside class="panel agents-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Agents</p>
+              <h2>Runtime State</h2>
+            </div>
+          </div>
+          <div id="agent-list" class="agent-list"></div>
+        </aside>
       </main>
     </div>
     <script src="/app.js" defer></script>

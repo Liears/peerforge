@@ -7,6 +7,7 @@
 - 为 `codex`、`claude`、`hermes`、`openclaw` 提供仓库内隔离运行态
 - 提供共享消息总线与 transcript 落盘
 - 提供本地 Web 面板，查看 transcript 和任务板状态
+- 提供支持 `@agent` 路由的实时群聊控制台
 - 支持 PM 风格任务板流程
 - 支持健康检查与仅用可用 agent 执行
 - 使用 `.peerforge/` 作为默认本地运行态根目录
@@ -16,6 +17,10 @@
 
 - [peerforge/README.md](/mnt/d/Work/01-code/muti_team/peerforge/README.md)
 - [docs/PROJECT_CHARTER.md](/mnt/d/Work/01-code/muti_team/docs/PROJECT_CHARTER.md)
+- [docs/ARCHITECTURE.md](/mnt/d/Work/01-code/muti_team/docs/ARCHITECTURE.md)
+- [docs/EVENT_MODEL.md](/mnt/d/Work/01-code/muti_team/docs/EVENT_MODEL.md)
+- [docs/FRONTEND_MVP.md](/mnt/d/Work/01-code/muti_team/docs/FRONTEND_MVP.md)
+- [docs/ACCEPTANCE.md](/mnt/d/Work/01-code/muti_team/docs/ACCEPTANCE.md)
 - [docs/VERIFICATION.md](/mnt/d/Work/01-code/muti_team/docs/VERIFICATION.md)
 - [docs/ISSUE_BACKLOG.md](/mnt/d/Work/01-code/muti_team/docs/ISSUE_BACKLOG.md)
 - [CONTRIBUTING.md](/mnt/d/Work/01-code/muti_team/CONTRIBUTING.md)
@@ -36,7 +41,11 @@ python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/con
 面板启动：
 
 ```bash
-python3 peerforge/dashboard.py --root .peerforge --port 8765
+python3 peerforge/dashboard.py --root .peerforge --config .peerforge/config.json --port 8765
 ```
 
-然后打开 `http://127.0.0.1:8765`，就能用群聊视图查看 session、消息发送对象、消息类型和任务板概览。
+然后打开 `http://127.0.0.1:8765`，就能：
+
+- 在一个输入框里用 `@agent` 给不同 agent 发消息
+- 在同一条时间线里看工具调用和工具结果
+- 查看任务板状态和 agent 心跳状态
