@@ -2,6 +2,11 @@
 
 Use these seeds to create GitHub Issues directly. They are aligned with `docs/ISSUE_BACKLOG.md`.
 
+Ordering note:
+
+- `feat: serialize board mutations` and `feat: add atomic task claim` are already delivered in the current board state.
+- The next issue after `feat: add heartbeat registry` is `fix: stabilize readiness selection`.
+
 ## P0
 
 ### feat: serialize board mutations

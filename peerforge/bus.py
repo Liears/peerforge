@@ -18,6 +18,7 @@ from typing import Any
 
 BOARD_LOCK_TIMEOUT_SECONDS = 5.0
 CLAIM_LEASE_SECONDS = 900
+HEARTBEAT_TTL_SECONDS = 300
 
 
 def now_iso() -> str:
@@ -97,6 +98,13 @@ def healthy_agent_names(config: dict[str, Any]) -> list[str]:
     ready: list[str] = []
     for adapter in bus.adapters:
         result = adapter.probe()
+        if result.get("status") != "ready":
+            continue
+        heartbeat = read_heartbeat(bus.runtime_root, adapter.name)
+        if heartbeat is not None and heartbeat_state(heartbeat) != "ready":
+            continue
+        if heartbeat is not None and heartbeat.get("state") == "offline":
+            continue
         if result.get("status") == "ready":
             ready.append(adapter.name)
     return ready
@@ -727,6 +735,14 @@ def board_lock_path(root: Path) -> Path:
     return root / "board.lock"
 
 
+def heartbeat_dir(runtime_root: Path) -> Path:
+    return runtime_root / "heartbeats"
+
+
+def heartbeat_path(runtime_root: Path, agent_name: str) -> Path:
+    return heartbeat_dir(runtime_root) / f"{agent_name}.json"
+
+
 def default_board() -> dict[str, Any]:
     return {"tasks": []}
 
@@ -737,6 +753,77 @@ class BoardLockTimeout(RuntimeError):
 
 class ClaimConflict(RuntimeError):
     pass
+
+
+def heartbeat_state(row: dict[str, Any] | None) -> str:
+    if not isinstance(row, dict):
+        return "offline"
+    state = str(row.get("state", "offline"))
+    if state not in {"ready", "busy", "offline"}:
+        return "offline"
+    expires_at = parse_iso8601(row.get("expires_at"))
+    if expires_at is None or expires_at <= datetime.now(timezone.utc):
+        return "offline"
+    return state
+
+
+def read_heartbeat(runtime_root: Path, agent_name: str) -> dict[str, Any] | None:
+    path = heartbeat_path(runtime_root, agent_name)
+    if not path.exists():
+        return None
+    try:
+        row = read_json(path)
+    except (json.JSONDecodeError, OSError):
+        return None
+    return row if isinstance(row, dict) else None
+
+
+def write_heartbeat(
+    runtime_root: Path,
+    agent_name: str,
+    state: str,
+    ttl_seconds: int = HEARTBEAT_TTL_SECONDS,
+    task_id: str | None = None,
+    claim_token: str | None = None,
+    message: str | None = None,
+) -> Path:
+    current = datetime.now(timezone.utc)
+    row: dict[str, Any] = {
+        "agent": agent_name,
+        "state": state,
+        "updated_at": current.isoformat(),
+        "expires_at": (current + timedelta(seconds=ttl_seconds)).isoformat(),
+    }
+    if task_id:
+        row["task_id"] = task_id
+    if claim_token:
+        row["claim_token"] = claim_token
+    if message:
+        row["message"] = message
+    path = heartbeat_path(runtime_root, agent_name)
+    write_json(path, row)
+    return path
+
+
+def set_heartbeat_group(
+    runtime_root: Path,
+    agent_names: list[str],
+    state: str,
+    ttl_seconds: int = HEARTBEAT_TTL_SECONDS,
+    task_id: str | None = None,
+    claim_token: str | None = None,
+    message: str | None = None,
+) -> None:
+    for agent_name in agent_names:
+        write_heartbeat(
+            runtime_root,
+            agent_name,
+            state=state,
+            ttl_seconds=ttl_seconds,
+            task_id=task_id,
+            claim_token=claim_token,
+            message=message,
+        )
 
 
 @contextmanager
@@ -992,7 +1079,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         selected = healthy_agent_names(filtered_config(base_config, selected))
     config = filtered_config(base_config, selected)
     bus = Bus(config)
-    log_path = bus.run(task=args.task, rounds=args.rounds, title=args.title)
+    agent_names = [adapter.name for adapter in bus.adapters]
+    set_heartbeat_group(bus.runtime_root, agent_names, state="busy", message="running bus task")
+    try:
+        log_path = bus.run(task=args.task, rounds=args.rounds, title=args.title)
+    finally:
+        set_heartbeat_group(bus.runtime_root, agent_names, state="ready", message="idle")
     print(str(log_path))
     return 0
 
@@ -1010,9 +1102,19 @@ def cmd_run_task(args: argparse.Namespace) -> int:
         raise SystemExit(str(exc))
     task_text = f"{claimed['title']}\n\n{claimed['description']}"
     bus = Bus(config)
+    agent_names = [adapter.name for adapter in bus.adapters]
+    set_heartbeat_group(
+        bus.runtime_root,
+        agent_names,
+        state="busy",
+        task_id=claimed["id"],
+        claim_token=claimed["claim_token"],
+        message=f"running {claimed['id']}",
+    )
     try:
         log_path = bus.run(task=task_text, rounds=args.rounds, title=claimed["title"])
     except Exception as exc:
+        set_heartbeat_group(bus.runtime_root, agent_names, state="offline", message="task failed")
         try:
             release_claimed_task(root, claimed["id"], claimed["claim_token"], str(exc))
         except (BoardLockTimeout, ClaimConflict):
@@ -1021,7 +1123,9 @@ def cmd_run_task(args: argparse.Namespace) -> int:
     try:
         complete_claimed_task(root, claimed["id"], claimed["claim_token"], log_path)
     except (BoardLockTimeout, ClaimConflict) as exc:
+        set_heartbeat_group(bus.runtime_root, agent_names, state="offline", message="claim finalize failed")
         raise SystemExit(str(exc))
+    set_heartbeat_group(bus.runtime_root, agent_names, state="ready", message="idle")
     print(str(log_path))
     return 0
 
@@ -1043,9 +1147,19 @@ def cmd_task_run_next(args: argparse.Namespace) -> int:
     except (BoardLockTimeout, ClaimConflict) as exc:
         raise SystemExit(str(exc))
     task_text = f"{claimed['title']}\n\n{claimed['description']}"
+    agent_names = [adapter.name for adapter in bus.adapters]
+    set_heartbeat_group(
+        bus.runtime_root,
+        agent_names,
+        state="busy",
+        task_id=claimed["id"],
+        claim_token=claimed["claim_token"],
+        message=f"running {claimed['id']}",
+    )
     try:
         log_path = bus.run(task=task_text, rounds=args.rounds, title=claimed["title"])
     except Exception as exc:
+        set_heartbeat_group(bus.runtime_root, agent_names, state="offline", message="task failed")
         try:
             release_claimed_task(root, claimed["id"], claimed["claim_token"], str(exc))
         except (BoardLockTimeout, ClaimConflict):
@@ -1054,7 +1168,9 @@ def cmd_task_run_next(args: argparse.Namespace) -> int:
     try:
         complete_claimed_task(root, claimed["id"], claimed["claim_token"], log_path)
     except (BoardLockTimeout, ClaimConflict) as exc:
+        set_heartbeat_group(bus.runtime_root, agent_names, state="offline", message="claim finalize failed")
         raise SystemExit(str(exc))
+    set_heartbeat_group(bus.runtime_root, agent_names, state="ready", message="idle")
     print(
         json.dumps(
             {
@@ -1100,7 +1216,11 @@ def cmd_run_ready(args: argparse.Namespace) -> int:
         raise SystemExit("no ready agents available")
     config = filtered_config(base_config, selected)
     bus = Bus(config)
-    log_path = bus.run(task=args.task, rounds=args.rounds, title=args.title)
+    set_heartbeat_group(bus.runtime_root, selected, state="busy", message="running ready task")
+    try:
+        log_path = bus.run(task=args.task, rounds=args.rounds, title=args.title)
+    finally:
+        set_heartbeat_group(bus.runtime_root, selected, state="ready", message="idle")
     print(json.dumps({"agents": selected, "transcript": str(log_path)}, ensure_ascii=False, indent=2))
     return 0
 
@@ -1111,6 +1231,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     results = []
     for adapter in bus.adapters:
         ops = bootstrap_agent_runtime(adapter, args.mode)
+        write_heartbeat(bus.runtime_root, adapter.name, state="ready", message="bootstrapped")
         results.append(
             {
                 "name": adapter.name,
@@ -1118,6 +1239,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
                 "runtime_dir": str(adapter.agent_runtime_dir),
                 "mode": args.mode,
                 "copied": ops,
+                "heartbeat": str(heartbeat_path(bus.runtime_root, adapter.name)),
             }
         )
     print(json.dumps(results, ensure_ascii=False, indent=2))

@@ -42,6 +42,39 @@ python3 peerforge/bus.py task-add --root .peerforge --title "..." --description 
 python3 peerforge/bus.py task-update <task-id> --root .peerforge --status in_review
 ```
 
+## Runtime State And Readiness
+
+The runtime state for coordination work should stay under `.peerforge/runtime/`.
+
+Current layout assumptions:
+
+- board data lives under `.peerforge/board.json`
+- session transcripts live under `.peerforge/sessions/`
+- runtime files for agents live under `.peerforge/runtime/`
+- heartbeat files, when present, should be treated as liveness signals only
+
+Heartbeat state is for readiness, not ownership.
+
+- a heartbeat can say `ready`, `busy`, or `offline`
+- a heartbeat file should not override a live board claim
+- lease expiry on the board decides when a task may be reclaimed
+- if heartbeat and board disagree, treat the board claim as the stronger signal
+
+If readiness looks wrong, check these first:
+
+1. Run `python3 peerforge/bus.py check --config .peerforge/config.json`.
+2. Run `python3 peerforge/bus.py ready --config .peerforge/config.json`.
+3. Confirm the agent has repo-local state under `.peerforge/runtime/`.
+4. Confirm `bootstrap` completed for the peer that looks unhealthy.
+5. If the agent is still missing, inspect the peer-specific runtime files instead of guessing from chat output.
+
+Typical troubleshooting cases:
+
+- `check` returns `error`: the command path, config, or repo-local env is wrong.
+- `ready` returns empty: the agent is healthy enough to start but not healthy enough to dispatch.
+- `task-run-next` finds no ready agents: bootstrap or config is incomplete, or the selected peers are actually unavailable.
+- a task remains claimed too long: the lease has not expired yet, so do not reclaim it early.
+
 ## When To Open A Branch
 
 Open a branch when the change:

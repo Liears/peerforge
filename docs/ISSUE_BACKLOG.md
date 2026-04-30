@@ -9,6 +9,13 @@ This backlog reflects the current post-discussion plan from `codex`, `hermes`, a
 - Define success as a local command that can be run and verified without manual state editing.
 - Prefer the smallest issue that unblocks the next dependency.
 
+## Already Delivered
+
+These tasks are already reflected in the current board state and should not be reordered ahead of the remaining queue:
+
+- `serialize board mutations`
+- `add atomic task claim`
+
 ## P0: Scheduler Safety and Readiness
 
 These issues should land before broader workflow automation.
@@ -114,6 +121,10 @@ These issues should land before broader workflow automation.
   - `ready` returns the same set that dispatch will actually use
   - known-bad agents are excluded before task execution
 
+Next issue after `add heartbeat registry`:
+
+- `fix: stabilize readiness selection`
+
 ## P1: Git Workflow Automation
 
 ### 6. feat: branch-aware task execution
@@ -151,10 +162,8 @@ These issues should land before broader workflow automation.
 
 ## Suggested Delivery Order
 
-1. `serialize board mutations`
-2. `add atomic task claim`
-3. `add stale-lease reclaim`
-4. `add heartbeat registry`
-5. `stabilize readiness selection`
-6. `branch-aware task execution`
-7. `agent playbook`
+1. `add stale-lease reclaim`
+2. `add heartbeat registry`
+3. `fix: stabilize readiness selection`
+4. `branch-aware task execution`
+5. `agent playbook`
