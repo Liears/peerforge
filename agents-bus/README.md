@@ -1,6 +1,8 @@
-# Multi-Agent Bus
+# peerforge Bus
 
-This directory contains a local peer-to-peer coordination prototype for four CLI agents:
+This directory contains the core peer-to-peer coordination module for `peerforge`.
+
+It currently targets four CLI agents:
 
 - `codex`
 - `claude`
