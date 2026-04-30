@@ -17,6 +17,8 @@ Core module:
 
 - [peerforge/README.md](/mnt/d/Work/01-code/muti_team/peerforge/README.md)
 - [docs/PROJECT_CHARTER.md](/mnt/d/Work/01-code/muti_team/docs/PROJECT_CHARTER.md)
+- [docs/VERIFICATION.md](/mnt/d/Work/01-code/muti_team/docs/VERIFICATION.md)
+- [docs/ISSUE_BACKLOG.md](/mnt/d/Work/01-code/muti_team/docs/ISSUE_BACKLOG.md)
 - [CONTRIBUTING.md](/mnt/d/Work/01-code/muti_team/CONTRIBUTING.md)
 
 Use `CONTRIBUTING.md` for branch, issue, PR, and skill-sharing rules. Use `docs/PROJECT_CHARTER.md` for the current project goal and near-term roadmap.

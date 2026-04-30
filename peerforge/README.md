@@ -28,6 +28,7 @@ It is not the "boss" in the conversation. It is a transport and safety layer.
 
 For contribution workflow and Git conventions, see [../CONTRIBUTING.md](/mnt/d/Work/01-code/muti_team/CONTRIBUTING.md).
 For the project goal and current milestone queue, see [../docs/PROJECT_CHARTER.md](/mnt/d/Work/01-code/muti_team/docs/PROJECT_CHARTER.md).
+For the concrete P0/P1 issue breakdown, see [../docs/ISSUE_BACKLOG.md](/mnt/d/Work/01-code/muti_team/docs/ISSUE_BACKLOG.md).
 
 ## Files
 

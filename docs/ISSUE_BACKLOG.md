@@ -23,7 +23,12 @@ These issues should land before broader workflow automation.
   - none
 - Scope:
   - add a board write lock
-  - serialize `task-add`, `task-update`, `task-run-next`, and any claim/reclaim path
+  - serialize `task-add`, `task-update`, `task-run-next`, and the claim/reclaim path
+  - use one lock file for the board mutation critical section
+- Must stay true:
+  - `check` and `ready` remain read-only
+  - lock acquisition must be explicit in tests, not assumed from behavior
+  - the lock must cover read-modify-write, not just write calls
 - Minimum delivery:
   - concurrent writers no longer corrupt `board.json`
   - lock acquisition is scoped to one mutation at a time
@@ -41,11 +46,17 @@ These issues should land before broader workflow automation.
   - add `claimed_by`
   - add `claimed_at`
   - add `lease_expires_at`
-  - claim the task before dispatch starts
+  - add `claim_token`
+  - claim the task before dispatch starts, under the board lock
+- Must stay true:
+  - a task can have only one active claim at a time
+  - `task-run-next` should claim first, then dispatch, then persist the transcript
+  - a late retry must not overwrite a newer claim
 - Minimum delivery:
   - a claimed task is visible in `board.json`
   - a second runner cannot claim the same task while the lease is active
   - `task-run-next` fails fast or skips cleanly when no claim is available
+  - completion or release clears the claim fields back to empty
 
 ### 3. feat: add stale-lease reclaim
 
@@ -59,6 +70,7 @@ These issues should land before broader workflow automation.
   - requeue expired claims
   - increment `attempts`
   - record why the claim was reclaimed
+  - expose the original owner and lease expiry in the reclaim outcome
 - Minimum delivery:
   - an expired claim can be recovered without manual board edits
   - reclaim outcome is visible in task state or transcript
@@ -73,8 +85,13 @@ These issues should land before broader workflow automation.
   - `serialize board mutations`
 - Scope:
   - define `ready|busy|offline`
-  - store heartbeat state under `.peerforge/`
+  - store heartbeat state under `.peerforge/runtime/heartbeats/`
   - write/update heartbeat status around dispatch boundaries
+  - include `updated_at`, `expires_at`, `task_id`, and `claim_token`
+- Must stay true:
+  - heartbeat files are runtime state, not board state
+  - readiness selection must consume the same status model that dispatch uses
+  - heartbeat expiry must not auto-reclaim a task lease
 - Minimum delivery:
   - each agent has a local heartbeat record
   - heartbeat state is readable by the dispatcher
@@ -92,6 +109,7 @@ These issues should land before broader workflow automation.
   - combine probe output with heartbeat state
   - reduce probe flakiness and false positives
   - tighten `--ready-only` dispatch behavior
+  - exclude `busy` or expired agents before claim attempts
 - Minimum delivery:
   - `ready` returns the same set that dispatch will actually use
   - known-bad agents are excluded before task execution

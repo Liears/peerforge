@@ -15,6 +15,8 @@
 
 - [peerforge/README.md](/mnt/d/Work/01-code/muti_team/peerforge/README.md)
 - [docs/PROJECT_CHARTER.md](/mnt/d/Work/01-code/muti_team/docs/PROJECT_CHARTER.md)
+- [docs/VERIFICATION.md](/mnt/d/Work/01-code/muti_team/docs/VERIFICATION.md)
+- [docs/ISSUE_BACKLOG.md](/mnt/d/Work/01-code/muti_team/docs/ISSUE_BACKLOG.md)
 - [CONTRIBUTING.md](/mnt/d/Work/01-code/muti_team/CONTRIBUTING.md)
 
 `CONTRIBUTING.md` 用于分支、Issue、PR 和经验共享规则。`docs/PROJECT_CHARTER.md` 用于说明当前项目目标和近期路线图。

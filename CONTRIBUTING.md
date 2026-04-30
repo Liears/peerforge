@@ -44,6 +44,8 @@ Recommended test coverage for workflow changes:
 - heartbeat registry test for `ready|busy|offline` transitions
 - transcript writeback test for task entries
 
+For the exact command matrix, see [docs/VERIFICATION.md](/mnt/d/Work/01-code/muti_team/docs/VERIFICATION.md).
+
 ## Agent Roles
 
 Keep roles flexible. Use the best available peer for the job.
