@@ -722,6 +722,15 @@ def write_board(root: Path, board: dict[str, Any]) -> None:
     write_json(board_path(root), board)
 
 
+def next_pending_task(board: dict[str, Any], owner: str | None = None) -> dict[str, Any] | None:
+    rows = board.get("tasks", [])
+    pending = [row for row in rows if row.get("status") in {"todo", "pending"}]
+    if owner:
+        pending = [row for row in pending if row.get("owner") == owner]
+    pending.sort(key=lambda row: row.get("created_at", ""))
+    return pending[0] if pending else None
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -771,15 +780,11 @@ def cmd_task_list(args: argparse.Namespace) -> int:
 
 def cmd_task_next(args: argparse.Namespace) -> int:
     board = read_board(Path(args.root).resolve())
-    rows = board.get("tasks", [])
-    pending = [row for row in rows if row.get("status") in {"todo", "pending"}]
-    if args.owner:
-        pending = [row for row in pending if row.get("owner") == args.owner]
-    pending.sort(key=lambda row: row.get("created_at", ""))
-    if not pending:
+    row = next_pending_task(board, args.owner)
+    if row is None:
         print("null")
         return 0
-    print(json.dumps(pending[0], ensure_ascii=False, indent=2))
+    print(json.dumps(row, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -832,6 +837,45 @@ def cmd_run_task(args: argparse.Namespace) -> int:
         print(str(log_path))
         return 0
     raise SystemExit(f"task not found: {args.task_id}")
+
+
+def cmd_task_run_next(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    board = read_board(root)
+    row = next_pending_task(board, args.owner)
+    if row is None:
+        raise SystemExit("no pending task found")
+
+    base_config = read_json(Path(args.config))
+    selected = parse_agent_filter(args.agents)
+    if args.bootstrap:
+        bootstrap_bus = Bus(filtered_config(base_config, selected))
+        for adapter in bootstrap_bus.adapters:
+            bootstrap_agent_runtime(adapter, args.bootstrap_mode)
+    if args.ready_only:
+        selected = healthy_agent_names(filtered_config(base_config, selected))
+    config = filtered_config(base_config, selected)
+    bus = Bus(config)
+
+    task_text = f"{row['title']}\n\n{row['description']}"
+    log_path = bus.run(task=task_text, rounds=args.rounds, title=row["title"])
+    row["status"] = "in_review"
+    row["last_run_at"] = now_iso()
+    row["last_transcript"] = str(log_path)
+    write_board(root, board)
+    print(
+        json.dumps(
+            {
+                "task_id": row["id"],
+                "title": row["title"],
+                "agents": [adapter.name for adapter in bus.adapters],
+                "transcript": str(log_path),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -939,6 +983,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_task_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
     run_task_parser.add_argument("--ready-only", action="store_true", help="Automatically restrict the run to agents whose probes return ready")
     run_task_parser.set_defaults(func=cmd_run_task)
+
+    task_run_next_parser = sub.add_parser("task-run-next", help="Run the next pending board task through the bus")
+    task_run_next_parser.add_argument("--root", default=".peerforge", help="Project root directory")
+    task_run_next_parser.add_argument("--config", required=True, help="Path to config JSON")
+    task_run_next_parser.add_argument("--rounds", type=int, default=2, help="Maximum discussion rounds")
+    task_run_next_parser.add_argument("--agents", help="Comma-separated subset of agent names to include")
+    task_run_next_parser.add_argument("--owner", help="Optional owner filter when choosing the next task")
+    task_run_next_parser.add_argument("--ready-only", action="store_true", help="Automatically restrict the run to agents whose probes return ready")
+    task_run_next_parser.add_argument("--bootstrap", action="store_true", help="Refresh repo-local runtime state before choosing ready agents")
+    task_run_next_parser.add_argument("--bootstrap-mode", choices=["copy", "symlink"], default="copy", help="Bootstrap materialization mode")
+    task_run_next_parser.set_defaults(func=cmd_task_run_next)
 
     check_parser = sub.add_parser("check", help="Run readiness probes for configured agents")
     check_parser.add_argument("--config", required=True, help="Path to config JSON")

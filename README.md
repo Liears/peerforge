@@ -10,6 +10,7 @@ Current focus:
 - a shared message bus with persisted transcripts
 - PM-style task board workflows
 - readiness checks and ready-only execution
+- `.peerforge/` as the primary local runtime root
 
 Core module:
 
@@ -21,5 +22,7 @@ Quick start:
 cp examples/config.example.json .peerforge/config.json
 python3 peerforge/bus.py bootstrap --config .peerforge/config.json --mode copy
 python3 peerforge/bus.py init --root .peerforge
-python3 peerforge/bus.py run-ready --config .peerforge/config.json --agents codex,hermes --bootstrap --task "Discuss the next implementation step." --rounds 2
+python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/config.json --agents codex,hermes --ready-only --bootstrap
 ```
+
+`task-run-next` reads the next pending task from `.peerforge/board.json`, selects the requested ready agents, runs the discussion, and writes the transcript back to the task entry.

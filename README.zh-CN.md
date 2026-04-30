@@ -8,6 +8,7 @@
 - 提供共享消息总线与 transcript 落盘
 - 支持 PM 风格任务板流程
 - 支持健康检查与仅用可用 agent 执行
+- 使用 `.peerforge/` 作为默认本地运行态根目录
 
 核心模块：
 
@@ -19,5 +20,7 @@
 cp examples/config.example.json .peerforge/config.json
 python3 peerforge/bus.py bootstrap --config .peerforge/config.json --mode copy
 python3 peerforge/bus.py init --root .peerforge
-python3 peerforge/bus.py run-ready --config .peerforge/config.json --agents codex,hermes --bootstrap --task "讨论下一步实现任务。" --rounds 2
+python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/config.json --agents codex,hermes --ready-only --bootstrap
 ```
+
+`task-run-next` 会从 `.peerforge/board.json` 中取出下一个待办任务，选择当前可用的 agent 执行讨论，并把 transcript 回写到任务项里。

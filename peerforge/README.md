@@ -82,7 +82,7 @@ Rules:
 cp examples/config.example.json .peerforge/config.json
 python3 peerforge/bus.py bootstrap --config .peerforge/config.json --mode copy
 python3 peerforge/bus.py init --root .peerforge
-python3 peerforge/bus.py run --config .peerforge/config.json --task "Discuss how to split a coding task." --rounds 2
+python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/config.json --agents codex,hermes --ready-only --bootstrap
 ```
 
 Smoke test without real providers:
@@ -99,12 +99,19 @@ Create and inspect tasks:
 python3 peerforge/bus.py task-add --root .peerforge --title "Implement adapter retry policy" --description "Decide retry conditions and code the runner changes."
 python3 peerforge/bus.py task-list --root .peerforge
 python3 peerforge/bus.py task-next --root .peerforge
+python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/config.json --agents codex,hermes --ready-only --bootstrap
 ```
 
 Run one task through the agent group:
 
 ```bash
 python3 peerforge/bus.py run-task wire-real-clis --root .peerforge --config .peerforge/config.json --rounds 2
+```
+
+Recommended one-shot PM flow:
+
+```bash
+python3 peerforge/bus.py task-run-next --root .peerforge --config .peerforge/config.json --agents codex,hermes --ready-only --bootstrap
 ```
 
 Limit a run to the peers that are currently healthy:
