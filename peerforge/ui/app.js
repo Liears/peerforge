@@ -62,6 +62,15 @@ function statusLabel(value) {
   return labels[value] || value || "未知";
 }
 
+function agentPresenceLabel(agent) {
+  const heartbeat = agent.heartbeat || "unknown";
+  if (heartbeat === "ready") return "在线";
+  if (heartbeat === "busy") return "忙碌";
+  if (heartbeat === "offline") return "已过期";
+  if (heartbeat === "unknown") return "未探测";
+  return statusLabel(heartbeat);
+}
+
 function eventTypeLabel(value) {
   const labels = {
     "user.input": "用户输入",
@@ -80,11 +89,29 @@ function eventTypeLabel(value) {
   return labels[value] || value || "未知事件";
 }
 
+function eventRole(event) {
+  const type = event.type || "unknown";
+  if (type === "user.input") return "user";
+  if (type === "chat.message") return "agent";
+  if (type === "tool.call" || type === "tool.result") return "tool";
+  if (type === "system.notice" || type === "session.started" || type === "session.ended" || type === "heartbeat.updated") {
+    return "system";
+  }
+  if (type.startsWith("task.")) return "system";
+  return "agent";
+}
+
 function eventBody(event) {
   const payload = event.payload || {};
   if (event.type === "system.notice" && payload.code === "no_ready_agents" && Array.isArray(payload.unavailable)) {
     const parts = payload.unavailable.map((item) => `${item.name}: ${statusLabel(item.status)}`);
     return `没有匹配到可用 Agent（${parts.join("，")}）`;
+  }
+  if (event.type === "tool.call") {
+    return payload.command_preview || payload.body || payload.summary || "";
+  }
+  if (event.type === "tool.result") {
+    return payload.summary || payload.body || payload.error || "";
   }
   return payload.body || payload.message || payload.summary || "";
 }
@@ -146,20 +173,82 @@ function renderBoard() {
 function renderAgents() {
   dom.agentList.innerHTML = state.agents.map((agent) => {
     const heartbeat = agent.heartbeat_raw || {};
-    const status = agent.heartbeat || agent.probe || "offline";
+    const status = agent.heartbeat || "unknown";
     const task = heartbeat.task_id ? `<p class="agent-detail">任务：${escapeHtml(heartbeat.task_id)}</p>` : "";
+    const probeLabel = agent.probe === "skipped" ? "已跳过" : statusLabel(agent.probe);
     return `
       <article class="agent-card state-${escapeHtml(status)}">
         <div class="agent-top">
           <h3>${escapeHtml(agent.name)}</h3>
-          <span class="status-pill">${escapeHtml(statusLabel(status))}</span>
+          <span class="status-pill">${escapeHtml(agentPresenceLabel(agent))}</span>
         </div>
-        <p class="agent-detail">探测：${escapeHtml(statusLabel(agent.probe))}</p>
+        <p class="agent-detail">探测：${escapeHtml(probeLabel)}</p>
         ${task}
         <p class="agent-detail">最近更新：${escapeHtml(formatDate(heartbeat.updated_at))}</p>
       </article>
     `;
   }).join("");
+}
+
+function renderMessageEvent(event) {
+  const type = event.type || "unknown";
+  const role = eventRole(event);
+  const payload = event.payload || {};
+  const meta = event.meta || {};
+  const body = eventBody(event);
+  const chips = role === "system" ? "" : formatTargets(event.target);
+  const timestamp = escapeHtml(formatDate(event.created_at));
+  const kind = escapeHtml(eventTypeLabel(type));
+  const sender = role === "user" ? "我" : escapeHtml(event.source || "系统");
+  const speaker = role === "system" ? "系统" : sender;
+  const status = meta.status ? `<span class="kind-chip">${escapeHtml(statusLabel(meta.status))}</span>` : "";
+  const targets = chips ? `<div class="recipient-row">${chips}</div>` : "";
+
+  if (role === "system") {
+    return `
+      <article class="message-row role-system type-${escapeHtml(type.replaceAll(".", "-"))}">
+        <div class="system-pill">
+          <span class="kind-chip">${kind}</span>
+          <span class="system-copy">${escapeHtml(body || event.source || "系统消息")}</span>
+          <span class="timestamp">${timestamp}</span>
+        </div>
+      </article>
+    `;
+  }
+
+  const tools = [];
+  if (type === "tool.call") {
+    tools.push(`<span class="tool-flag">调用 ${escapeHtml(payload.tool || "工具")}</span>`);
+    if (payload.command_preview) {
+      tools.push(`<span class="tool-copy">${escapeHtml(payload.command_preview)}</span>`);
+    }
+  }
+  if (type === "tool.result") {
+    tools.push(`<span class="tool-flag ${payload.ok ? "success" : "fail"}">${payload.ok ? "已返回" : "失败"}</span>`);
+    tools.push(`<span class="tool-copy">${escapeHtml(payload.tool || "工具")}</span>`);
+    if (payload.duration_ms != null) {
+      tools.push(`<span class="tool-copy">${escapeHtml(String(payload.duration_ms))}ms</span>`);
+    }
+  }
+
+  return `
+    <article class="message-row role-${role} type-${escapeHtml(type.replaceAll(".", "-"))}">
+      <div class="message-stack">
+        <div class="message-meta">
+          <span class="avatar">${escapeHtml(speaker)}</span>
+          <span class="speaker">${escapeHtml(speaker)}</span>
+          <span class="kind-chip">${kind}</span>
+          ${status}
+          <span class="timestamp">${timestamp}</span>
+        </div>
+        <div class="message-bubble">
+          ${body ? `<div class="message-body">${escapeHtml(body)}</div>` : ""}
+          ${tools.length ? `<div class="message-tools">${tools.join("")}</div>` : ""}
+        </div>
+        ${targets}
+      </div>
+    </article>
+  `;
 }
 
 function renderThread() {
@@ -177,38 +266,16 @@ function renderThread() {
     </div>
   `;
 
-  dom.messageList.innerHTML = events.map((event) => {
-    const type = event.type || "unknown";
-    const payload = event.payload || {};
-    const body = eventBody(event);
-    const meta = event.meta || {};
-    const chips = formatTargets(event.target);
-    const status = meta.status ? `<span class="kind-chip">${escapeHtml(statusLabel(meta.status))}</span>` : "";
-    const detail = type === "tool.result" ? `
-      <div class="tool-detail">
-        <span>工具 ${escapeHtml(payload.tool || "")}</span>
-        <span>${payload.ok ? "成功" : "失败"}</span>
-        <span>${escapeHtml(String(payload.duration_ms ?? ""))}ms</span>
-      </div>
-      ${payload.error ? `<pre class="message-body">${escapeHtml(payload.error)}</pre>` : ""}
-    ` : "";
-    return `
-      <article class="message-card type-${escapeHtml(type.replaceAll(".", "-"))}">
-        <div class="message-top">
-          <div class="sender-line">
-            <span class="sender">${escapeHtml(event.source || "system")}</span>
-            <span class="kind-chip">${escapeHtml(eventTypeLabel(type))}</span>
-            ${status}
-          </div>
-          <span class="timestamp">${escapeHtml(formatDate(event.created_at))}</span>
-        </div>
-        <div class="recipient-row">${chips}</div>
-        ${body ? `<pre class="message-body">${escapeHtml(body)}</pre>` : ""}
-        ${detail}
-      </article>
-    `;
-  }).join("");
-  dom.messageList.scrollTop = dom.messageList.scrollHeight;
+  const previousScrollTop = dom.messageList.scrollTop;
+  const previousScrollHeight = dom.messageList.scrollHeight;
+  const shouldStickToBottom = previousScrollTop + dom.messageList.clientHeight >= previousScrollHeight - 72;
+  dom.messageList.innerHTML = events.map(renderMessageEvent).join("");
+  if (shouldStickToBottom) {
+    dom.messageList.scrollTop = dom.messageList.scrollHeight;
+  } else {
+    const delta = dom.messageList.scrollHeight - previousScrollHeight;
+    dom.messageList.scrollTop = Math.max(0, previousScrollTop + delta);
+  }
 }
 
 async function refreshAll() {
@@ -261,5 +328,12 @@ async function sendMessage(event) {
 
 dom.refreshButton.addEventListener("click", refreshAll);
 dom.chatForm.addEventListener("submit", sendMessage);
+dom.chatInput.addEventListener("keydown", (event) => {
+  if (event.isComposing || event.keyCode === 229) return;
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    dom.chatForm.requestSubmit();
+  }
+});
 refreshAll();
 window.setInterval(refreshAll, 5000);

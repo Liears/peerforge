@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>peerforge 控制台</title>
+    <title>peerforge 群聊控制台</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -11,8 +11,8 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">peerforge</p>
-          <h1>多 Agent 协作控制台</h1>
-          <p class="topbar-copy">单线程群聊视图，集中展示任务上下文、Agent 状态和可见执行事件。</p>
+          <h1>多 Agent 群聊控制台</h1>
+          <p class="topbar-copy">单线程群聊视图，消息、工具调用和在线状态都在同一条时间线上。</p>
         </div>
         <div class="topbar-actions">
           <button id="refresh-button" class="ghost-button">刷新</button>
@@ -36,15 +36,15 @@
           <div class="panel-head chat-head">
             <div>
               <p class="eyebrow">实时线程</p>
-              <h2 id="thread-title">主 Agent 线程</h2>
+            <h2 id="thread-title">群聊主线程</h2>
             </div>
             <div id="thread-meta" class="thread-meta"></div>
           </div>
           <div id="message-list" class="message-list"></div>
           <form id="chat-form" class="input-bar">
-            <div class="input-hint">示例：<code>@codex 检查路由器实现</code> · <code>@all 讨论下一步计划</code></div>
+            <div class="input-hint">Enter 发送，Shift+Enter 换行。示例：<code>@codex 检查路由器实现</code> · <code>@all 讨论下一步计划</code></div>
             <div class="input-row">
-              <textarea id="chat-input" rows="3" placeholder="输入消息，可使用 @codex、@claude、@hermes、@openclaw 或 @all"></textarea>
+              <textarea id="chat-input" rows="3" placeholder="发消息给 @codex、@claude、@hermes、@openclaw 或 @all"></textarea>
               <button type="submit" class="send-button">发送</button>
             </div>
           </form>
@@ -54,7 +54,7 @@
           <div class="panel-head">
             <div>
               <p class="eyebrow">Agent</p>
-              <h2>运行状态</h2>
+            <h2>在线名单</h2>
             </div>
           </div>
           <div id="agent-list" class="agent-list"></div>
